@@ -1,4 +1,4 @@
-import Data.List ((\\), delete, elem)
+import Data.List ((\\), delete, elem, minimumBy, maximumBy)
 data Suit = Hearts | Diamonds | Clubs | Spades deriving (Show, Eq)
 data Card = Card 
         { cardValue :: Int
@@ -50,21 +50,25 @@ data TransientState = TransientState
         , activeAttack    :: [Card] -- Cards the player has yet to defend against
         } deriving (Show, Eq)
 
+allDeskCards (TransientState ia id aa) = ia ++ id ++ aa
+
 data OffenseAction = Attack Card
                    | FinishAttack
+                   deriving Show
 
 data DefenseAction = Defend Card Card
                    | GiveUp
+                   deriving Show
 
 emptyTransientState = TransientState [] [] []
 
 testState = GameState [Card 11 Hearts, Card 6 Diamonds, Card 8 Spades, Card 6 Spades, Card 14 Spades, Card 12 Diamonds] [] (Card 7 Hearts) [Card 9 Spades] 6
 
--- Infers a list of cards the opponent may have:
--- all possible cards 
--- - our hand - discard pile - face-up trump card - cards we know he has - transient state
-possibleOpponentCards :: GameState -> TransientState -> [Card]
-possibleOpponentCards (GameState p d t c _) (TransientState ia id aa) =
+-- Returns a list of cards that we haven't yet seen in the game
+-- = universe of cards
+-- - our hand - discard pile - face-up trump card - cards we know the opponent has - transient state
+unseenCards :: GameState -> TransientState -> [Card]
+unseenCards (GameState p d t c _) (TransientState ia id aa) =
     universe \\ (t : p ++ d ++ c ++ ia ++ id ++ aa)
 
 -- Counts the expected value of the fraction of cards
@@ -81,7 +85,7 @@ cardFraction pred state@(GameState _ _ _ knownCards opHandSize) tstate =
         knownLength = fromIntegral $ length knownCards
         unknownEstimate = (fromIntegral $ length $ filter pred possibleCards) / 
                           (fromIntegral $ length possibleCards)
-        possibleCards = possibleOpponentCards state tstate
+        possibleCards = unseenCards state tstate
         
 -- The expected value of the fraction of cards
 -- the opponent has that can't beat this card
@@ -95,20 +99,66 @@ defenseValue :: Card -> GameState -> TransientState -> Double
 defenseValue card state tstate =
     cardFraction (beats (cardSuit $ trumpCard state) card) state tstate
 
+-- Weight for the hand size when evaluating a hand: less than 7 is okay,
+-- apply a penalty after that.
+cardNumberMultiplier :: Int -> Double
+cardNumberMultiplier n = if n <= 6 then 1.0
+                                   else 1.0 / ((fromIntegral n) - 6.0)
+
+mean :: [Double] -> Double
+mean xs = sum xs / (fromIntegral $ length xs)
+
+-- Evaluates a hand's defense value given the current state.
+handValue :: GameState -> TransientState -> [Card] -> Double
+handValue gs ts cs = mean (map (\c -> defenseValue c gs ts) cs) * (cardNumberMultiplier $ length cs)
+
+-- Evaluates a hand's defense value after we finish the turn and
+-- take up some cards from the deck by taking a weighted average of
+-- hand value and deck value
+futureHandValue :: GameState -> TransientState -> [Card] -> Double
+futureHandValue gs ts cs = if length cs >= 6 then hVal
+    else hvWeight * hVal + (1 - hvWeight) * dVal
+    where hvWeight = (fromIntegral $ length cs) / 6.0
+          hVal = handValue gs ts cs
+          dVal = deckValue gs ts
+
+-- Evaluates the average value of the cards in the deck
+deckValue :: GameState -> TransientState -> Double
+deckValue gs ts = mean $ map (\c -> defenseValue c gs ts) $ unseenCards gs ts
+
 -- Calculates the offense action
 -- Things to consider:
 -- - probability of defender taking the cards
 -- - minimizing defender's hand value
 -- - future value of our hand (if we have to take cards from
 --   the deck, what will be the value of our hand?)
--- offenseAction :: GameState -> TransientState -> OffenseAction
+-- Current strategy: pick the card with the smallest defense value if first turn,
+-- otherwise find the card such that if we put it on the table and take another one
+-- from the deck, adding it to our hand, we get the maximum hand value.
+-- If this maximum value is smaller than what we will get if we abandon the attack,
+-- then abandon the attack, otherwise, attack with the card.
+offenseAction :: GameState -> TransientState -> OffenseAction
+offenseAction gs ts =
+    if ts == emptyTransientState then Attack $ pickFirstOffenseCard gs ts
+    else if bestCardFV > futureHand then Attack bestCard else FinishAttack
+        where cardFV c = futureHandValue gs ts $ delete c $ playerHand gs
+              bestCard = maximumBy (\c1 c2 -> compare (cardFV c1) (cardFV c2)) $ playerHand gs
+              bestCardFV = cardFV bestCard
+              futureHand = futureHandValue gs ts $ playerHand gs
+              possibleAttackCards = filter (flip elem deskCardValues . cardValue) $ playerHand gs
+              deskCardValues = map cardValue $ allDeskCards ts
+
+-- Picks a card to start the offense with, the least-valuable card for defense for now
+pickFirstOffenseCard gs ts =
+    minimumBy (\c1 c2 -> compare (defenseValue c1 gs ts) (defenseValue c2 gs ts)) (playerHand gs)
 
 -- Calculates the defense action
 -- Things to consider:
 -- - future value of our hand if we take the cards on desk
 --   or cards in the deck after we successfully defend
 -- - how close are we to the end of the game?
--- defenseAction :: GameState -> TransientState -> DefenseAction
+-- - problem: several cards we have to beat, how to determine what to beat them with?
+-- defenseAction :: GameState -> TransientState -> [DefenseAction]
 
 -- Simulates the opponent putting a card on the table: removes it
 -- from the known hand and decreases the number of cards the opponent has.
@@ -137,10 +187,10 @@ applyDefenseAction gs ts@(TransientState ia id aa) myTurn (Defend against with) 
      ts {inactiveAttack  = against:ia,
          activeAttack    = delete against aa,
          inactiveDefense = with:id})
-applyDefenseAction gs ts@(TransientState ia id aa) myTurn GiveUp =
+applyDefenseAction gs ts myTurn GiveUp =
     (if myTurn
         then gs {playerHand        = (playerHand gs) ++ newCards}
         else gs {knownOpponentHand = (knownOpponentHand gs) ++ newCards,
                  opponentHandSize  = (opponentHandSize gs) + length newCards},
      emptyTransientState)
-    where newCards = ia ++ id ++ aa
+    where newCards = allDeskCards ts
