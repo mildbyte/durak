@@ -133,6 +133,7 @@ deckValue gs ts = mean $ map (\c -> defenseValue c gs ts) $ unseenCards gs ts
 -- - future value of our hand (if we have to take cards from
 --   the deck, what will be the value of our hand?)
 -- Current strategy: pick the card with the smallest defense value if first turn,
+-- abandon attack if we can't find any cards to attack with, 
 -- otherwise find the card such that if we put it on the table and take another one
 -- from the deck, adding it to our hand, we get the maximum hand value.
 -- If this maximum value is smaller than what we will get if we abandon the attack,
@@ -140,9 +141,9 @@ deckValue gs ts = mean $ map (\c -> defenseValue c gs ts) $ unseenCards gs ts
 offenseAction :: GameState -> TransientState -> OffenseAction
 offenseAction gs ts =
     if ts == emptyTransientState then Attack $ pickFirstOffenseCard gs ts
-    else if bestCardFV > futureHand then Attack bestCard else FinishAttack
+    else if possibleAttackCards /= [] && bestCardFV > futureHand then Attack bestCard else FinishAttack
         where cardFV c = futureHandValue gs ts $ delete c $ playerHand gs
-              bestCard = maximumBy (\c1 c2 -> compare (cardFV c1) (cardFV c2)) $ playerHand gs
+              bestCard = maximumBy (\c1 c2 -> compare (cardFV c1) (cardFV c2)) possibleAttackCards
               bestCardFV = cardFV bestCard
               futureHand = futureHandValue gs ts $ playerHand gs
               possibleAttackCards = filter (flip elem deskCardValues . cardValue) $ playerHand gs
