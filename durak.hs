@@ -40,7 +40,7 @@ data GameState = GameState
         , discardPile :: [Card]
         , trumpCard :: Card
         , knownOpponentHand :: [Card]
-        , opponentHandSize :: Integer
+        , opponentHandSize :: Int
         } deriving (Show, Eq)
 
 -- State during an attack or defense
@@ -110,6 +110,13 @@ defenseValue card state tstate =
 -- - how close are we to the end of the game?
 -- defenseAction :: GameState -> TransientState -> DefenseAction
 
+-- Simulates the opponent putting a card on the table: removes it
+-- from the known hand and decreases the number of cards the opponent has.
+updateKnownOpponentHand :: GameState -> Card -> GameState
+updateKnownOpponentHand gs@(GameState _ _ _ kh hs) card =
+    gs {knownOpponentHand = delete card kh,
+        opponentHandSize  = hs - 1}
+
 -- Applies an offense action to the game state
 -- The boolean parameter is whether it's our turn (did we perform the action?)
 applyOffenseAction :: GameState -> TransientState -> Bool -> OffenseAction -> (GameState, TransientState)
@@ -118,9 +125,22 @@ applyOffenseAction gs (TransientState ia id aa) _ FinishAttack =
 applyOffenseAction gs ts@(TransientState _ _ aa) True (Attack card) =
     (gs {playerHand = delete card (playerHand gs)}, ts {activeAttack = card:aa})
 applyOffenseAction gs@(GameState _ _ _ knownOpHand opHandSize) ts@(TransientState _ _ aa) False (Attack card) = 
-    (newGS, newTS)
-    where newTS = ts {activeAttack = card:aa}
-          newGS = gs {knownOpponentHand = if elem card knownOpHand
-                                          then delete card knownOpHand
-                                          else knownOpHand,
-                      opponentHandSize  = opHandSize - 1}
+    (updateKnownOpponentHand gs card, ts {activeAttack = card:aa})
+
+-- Applies a defense action to the game state
+-- The boolean parameter is whether we performed the action.
+applyDefenseAction :: GameState -> TransientState -> Bool -> DefenseAction -> (GameState, TransientState)
+applyDefenseAction gs ts@(TransientState ia id aa) myTurn (Defend against with) =
+    (if myTurn
+        then gs {playerHand = delete with (playerHand gs)}
+        else updateKnownOpponentHand gs with,
+     ts {inactiveAttack  = against:ia,
+         activeAttack    = delete against aa,
+         inactiveDefense = with:id})
+applyDefenseAction gs ts@(TransientState ia id aa) myTurn GiveUp =
+    (if myTurn
+        then gs {playerHand        = (playerHand gs) ++ newCards}
+        else gs {knownOpponentHand = (knownOpponentHand gs) ++ newCards,
+                 opponentHandSize  = (opponentHandSize gs) + length newCards},
+     emptyTransientState)
+    where newCards = ia ++ id ++ aa
