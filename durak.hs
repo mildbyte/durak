@@ -1,4 +1,5 @@
-import Data.List ((\\), delete, elem, minimumBy, maximumBy)
+import Data.List ((\\), delete, elem, minimumBy, maximumBy, nub)
+import Control.Monad (sequence)
 data Suit = Hearts | Diamonds | Clubs | Spades deriving (Show, Eq)
 data Card = Card 
         { cardValue :: Int
@@ -158,9 +159,19 @@ pickFirstOffenseCard gs ts =
 -- - future value of our hand if we take the cards on desk
 --   or cards in the deck after we successfully defend
 -- - how close are we to the end of the game?
--- - problem: several cards we have to beat, how to determine what to beat them with?
--- defenseAction :: GameState -> TransientState -> [DefenseAction]
-
+defenseAction :: GameState -> TransientState -> [DefenseAction]
+defenseAction gs ts =
+   if validBeatings == [] then [GiveUp]
+   else if bestBeatingFV < giveUpFV then [GiveUp]
+   else map (\(ac, pc) -> Defend ac pc) $ zip (activeAttack ts) bestBeating
+   where cardsBeatC ac = filter (\pc -> beats (cardSuit $ trumpCard gs) pc ac) $ playerHand gs
+         beatingCards  = map cardsBeatC $ activeAttack ts
+         validBeatings = filter (\xs -> nub xs == xs) $ sequence beatingCards
+         giveUpFV      = handValue gs ts $ allDeskCards ts ++ playerHand gs
+         beatingFV b   = handValue gs ts $ (playerHand gs) \\ b
+         bestBeating   = maximumBy (\c1 c2 -> compare (beatingFV c1) (beatingFV c2)) validBeatings
+         bestBeatingFV = beatingFV bestBeating
+        
 -- Simulates the opponent putting a card on the table: removes it
 -- from the known hand and decreases the number of cards the opponent has.
 updateKnownOpponentHand :: GameState -> Card -> GameState
