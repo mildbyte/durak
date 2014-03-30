@@ -1,9 +1,4 @@
-<<<<<<< HEAD
 import Data.List ((\\), delete, elem)
-=======
-import Data.List ((\\))
->>>>>>> 3eb82dc4e49b3e9baeef93ee48f2ddac7caa3f0b
-
 data Suit = Hearts | Diamonds | Clubs | Spades deriving (Show, Eq)
 data Card = Card 
         { cardValue :: Int
@@ -46,7 +41,6 @@ data GameState = GameState
         , trumpCard :: Card
         , knownOpponentHand :: [Card]
         , opponentHandSize :: Integer
-<<<<<<< HEAD
         } deriving (Show, Eq)
 
 -- State during an attack or defense
@@ -72,29 +66,13 @@ testState = GameState [Card 11 Hearts, Card 6 Diamonds, Card 8 Spades, Card 6 Sp
 possibleOpponentCards :: GameState -> TransientState -> [Card]
 possibleOpponentCards (GameState p d t c _) (TransientState ia id aa) =
     universe \\ (t : p ++ d ++ c ++ ia ++ id ++ aa)
-=======
-        }
 
-testState = GameState [Card 11 Hearts, Card 6 Diamonds, Card 8 Spades, Card 6 Spades, Card 14 Hearts, Card 12 Diamonds] [] (Card 7 Hearts) [Card 12 Spades] 6
-
--- Infers a list of cards the opponent may have:
--- all possible cards - our hand - discard pile - face-up trump card - cards we know he has
-possibleOpponentCards :: GameState -> [Card]
-possibleOpponentCards (GameState player discard trump known _) =
-    universe \\ (trump : (player ++ discard ++ known))
->>>>>>> 3eb82dc4e49b3e9baeef93ee48f2ddac7caa3f0b
-    
 -- Counts the expected value of the fraction of cards
 -- the opponent has that satisfy a given predicate
 -- Makes the estimate more precise by considering the cards
 -- we know the opponent has.
-<<<<<<< HEAD
 cardFraction :: (Card -> Bool) -> GameState -> TransientState -> Double
 cardFraction pred state@(GameState _ _ _ knownCards opHandSize) tstate =
-=======
-cardFraction :: (Card -> Bool) -> GameState -> Double
-cardFraction pred state@(GameState _ _ _ knownCards opHandSize) =
->>>>>>> 3eb82dc4e49b3e9baeef93ee48f2ddac7caa3f0b
     if knownLength == 0 then unknownEstimate
     else knownWeight * knownFraction + (1 - knownWeight) * unknownEstimate
     where
@@ -103,7 +81,6 @@ cardFraction pred state@(GameState _ _ _ knownCards opHandSize) =
         knownLength = fromIntegral $ length knownCards
         unknownEstimate = (fromIntegral $ length $ filter pred possibleCards) / 
                           (fromIntegral $ length possibleCards)
-<<<<<<< HEAD
         possibleCards = possibleOpponentCards state tstate
         
 -- The expected value of the fraction of cards
@@ -147,20 +124,3 @@ applyOffenseAction gs@(GameState _ _ _ knownOpHand opHandSize) ts@(TransientStat
                                           then delete card knownOpHand
                                           else knownOpHand,
                       opponentHandSize  = opHandSize - 1}
-
-
-=======
-        possibleCards = possibleOpponentCards state
-        
--- The expected value of the fraction of cards
--- the opponent has that can't beat this card
-offenseValue :: Card -> GameState -> Double
-offenseValue card state =
-    cardFraction (\c -> not (beats (cardSuit $ trumpCard state) c card)) state
-    
--- The expected value of the fraction of cards
--- the opponent has that this card can beat
-defenseValue :: Card -> GameState -> Double
-defenseValue card state =
-    cardFraction (beats (cardSuit $ trumpCard state) card) state
->>>>>>> 3eb82dc4e49b3e9baeef93ee48f2ddac7caa3f0b
