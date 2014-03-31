@@ -1,5 +1,6 @@
 import Data.List ((\\), delete, elem, minimumBy, maximumBy, nub)
 import Control.Monad (sequence)
+import Data.Function (on)
 data Suit = Hearts | Diamonds | Clubs | Spades deriving (Show, Eq)
 data Card = Card 
         { cardValue :: Int
@@ -82,36 +83,36 @@ cardFraction pred state@(GameState _ _ _ knownCards opHandSize) tstate =
     else knownWeight * knownFraction + (1 - knownWeight) * unknownEstimate
     where
         knownWeight = knownLength / fromIntegral opHandSize
-        knownFraction = (fromIntegral $ length $ filter pred knownCards) / knownLength
+        knownFraction = fromIntegral (length $ filter pred knownCards) / knownLength
         knownLength = fromIntegral $ length knownCards
-        unknownEstimate = (fromIntegral $ length $ filter pred possibleCards) / 
-                          (fromIntegral $ length possibleCards)
+        unknownEstimate = fromIntegral (length $ filter pred possibleCards) / 
+                          fromIntegral (length possibleCards)
         possibleCards = unseenCards state tstate
         
 -- The expected value of the fraction of cards
 -- the opponent has that can't beat this card
 offenseValue :: Card -> GameState -> TransientState -> Double
-offenseValue card state tstate =
-    cardFraction (\c -> not (beats (cardSuit $ trumpCard state) c card)) state tstate
+offenseValue card state =
+    cardFraction (\c -> not (beats (cardSuit $ trumpCard state) c card)) state
     
 -- The expected value of the fraction of cards
 -- the opponent has that this card can beat
 defenseValue :: Card -> GameState -> TransientState -> Double
-defenseValue card state tstate =
-    cardFraction (beats (cardSuit $ trumpCard state) card) state tstate
+defenseValue card state =
+    cardFraction (beats (cardSuit $ trumpCard state) card) state
 
 -- Weight for the hand size when evaluating a hand: less than 7 is okay,
 -- apply a penalty after that.
 cardNumberMultiplier :: Int -> Double
 cardNumberMultiplier n = if n <= 6 then 1.0
-                                   else 1.0 / ((fromIntegral n) - 6.0)
+                                   else 1.0 / (fromIntegral n - 6.0)
 
 mean :: [Double] -> Double
-mean xs = sum xs / (fromIntegral $ length xs)
+mean xs = sum xs / fromIntegral (length xs)
 
 -- Evaluates a hand's defense value given the current state.
 handValue :: GameState -> TransientState -> [Card] -> Double
-handValue gs ts cs = mean (map (\c -> defenseValue c gs ts) cs) * (cardNumberMultiplier $ length cs)
+handValue gs ts cs = mean (map (\c -> defenseValue c gs ts) cs) * cardNumberMultiplier (length cs)
 
 -- Evaluates a hand's defense value after we finish the turn and
 -- take up some cards from the deck by taking a weighted average of
@@ -119,7 +120,7 @@ handValue gs ts cs = mean (map (\c -> defenseValue c gs ts) cs) * (cardNumberMul
 futureHandValue :: GameState -> TransientState -> [Card] -> Double
 futureHandValue gs ts cs = if length cs >= 6 then hVal
     else hvWeight * hVal + (1 - hvWeight) * dVal
-    where hvWeight = (fromIntegral $ length cs) / 6.0
+    where hvWeight = fromIntegral (length cs) / 6.0
           hVal = handValue gs ts cs
           dVal = deckValue gs ts
 
@@ -140,11 +141,12 @@ deckValue gs ts = mean $ map (\c -> defenseValue c gs ts) $ unseenCards gs ts
 -- If this maximum value is smaller than what we will get if we abandon the attack,
 -- then abandon the attack, otherwise, attack with the card.
 offenseAction :: GameState -> TransientState -> OffenseAction
-offenseAction gs ts =
-    if ts == emptyTransientState then Attack $ pickFirstOffenseCard gs ts
-    else if possibleAttackCards /= [] && bestCardFV > futureHand then Attack bestCard else FinishAttack
+offenseAction gs ts
+    | ts == emptyTransientState = Attack $ pickFirstOffenseCard gs emptyTransientState
+    | possibleAttackCards /= [] && bestCardFV > futureHand = Attack bestCard
+    | otherwise = FinishAttack
         where cardFV c = futureHandValue gs ts $ delete c $ playerHand gs
-              bestCard = maximumBy (\c1 c2 -> compare (cardFV c1) (cardFV c2)) possibleAttackCards
+              bestCard = maximumBy (compare `on` cardFV) possibleAttackCards
               bestCardFV = cardFV bestCard
               futureHand = futureHandValue gs ts $ playerHand gs
               possibleAttackCards = filter (flip elem deskCardValues . cardValue) $ playerHand gs
@@ -160,16 +162,16 @@ pickFirstOffenseCard gs ts =
 --   or cards in the deck after we successfully defend
 -- - how close are we to the end of the game?
 defenseAction :: GameState -> TransientState -> [DefenseAction]
-defenseAction gs ts =
-   if validBeatings == [] then [GiveUp]
-   else if bestBeatingFV < giveUpFV then [GiveUp]
-   else map (\(ac, pc) -> Defend ac pc) $ zip (activeAttack ts) bestBeating
+defenseAction gs ts
+   | null validBeatings       = [GiveUp]
+   | bestBeatingFV < giveUpFV = [GiveUp]
+   | otherwise                = zipWith Defend (activeAttack ts) bestBeating
    where cardsBeatC ac = filter (\pc -> beats (cardSuit $ trumpCard gs) pc ac) $ playerHand gs
          beatingCards  = map cardsBeatC $ activeAttack ts
          validBeatings = filter (\xs -> nub xs == xs) $ sequence beatingCards
          giveUpFV      = handValue gs ts $ allDeskCards ts ++ playerHand gs
-         beatingFV b   = handValue gs ts $ (playerHand gs) \\ b
-         bestBeating   = maximumBy (\c1 c2 -> compare (beatingFV c1) (beatingFV c2)) validBeatings
+         beatingFV b   = handValue gs ts $ playerHand gs \\ b
+         bestBeating   = maximumBy (compare `on` beatingFV) validBeatings
          bestBeatingFV = beatingFV bestBeating
         
 -- Simulates the opponent putting a card on the table: removes it
@@ -183,7 +185,7 @@ updateKnownOpponentHand gs@(GameState _ _ _ kh hs) card =
 -- The boolean parameter is whether it's our turn (did we perform the action?)
 applyOffenseAction :: GameState -> TransientState -> Bool -> OffenseAction -> (GameState, TransientState)
 applyOffenseAction gs (TransientState ia id aa) _ FinishAttack =
-    (gs {discardPile = (discardPile gs) ++ ia ++ id}, emptyTransientState)
+    (gs {discardPile = discardPile gs ++ ia ++ id}, emptyTransientState)
 applyOffenseAction gs ts@(TransientState _ _ aa) True (Attack card) =
     (gs {playerHand = delete card (playerHand gs)}, ts {activeAttack = card:aa})
 applyOffenseAction gs@(GameState _ _ _ knownOpHand opHandSize) ts@(TransientState _ _ aa) False (Attack card) = 
@@ -201,8 +203,8 @@ applyDefenseAction gs ts@(TransientState ia id aa) myTurn (Defend against with) 
          inactiveDefense = with:id})
 applyDefenseAction gs ts myTurn GiveUp =
     (if myTurn
-        then gs {playerHand        = (playerHand gs) ++ newCards}
-        else gs {knownOpponentHand = (knownOpponentHand gs) ++ newCards,
-                 opponentHandSize  = (opponentHandSize gs) + length newCards},
+        then gs {playerHand        = playerHand gs ++ newCards}
+        else gs {knownOpponentHand = knownOpponentHand gs ++ newCards,
+                 opponentHandSize  = opponentHandSize gs + length newCards},
      emptyTransientState)
     where newCards = allDeskCards ts
