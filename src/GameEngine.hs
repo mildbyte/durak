@@ -34,3 +34,10 @@ beats trump (Card v1 s1) (Card v2 s2) =
 universe :: [Card]
 universe = [Card v s | v <- [6..14], s <- [Hearts, Diamonds, Clubs, Spades]]
 
+data OffenseAction = Attack Card
+                   | FinishAttack
+                   deriving Show
+
+data DefenseAction = Defend Card Card
+                   | GiveUp
+                   deriving Show

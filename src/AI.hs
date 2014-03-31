@@ -26,19 +26,8 @@ data TransientState = TransientState
 allDeskCards :: TransientState -> [Card]
 allDeskCards (TransientState ia ind aa) = ia ++ ind ++ aa
 
-data OffenseAction = Attack Card
-                   | FinishAttack
-                   deriving Show
-
-data DefenseAction = Defend Card Card
-                   | GiveUp
-                   deriving Show
-
 emptyTransientState :: TransientState
 emptyTransientState = TransientState [] [] []
-
-testState :: GameState
-testState = GameState [Card 11 Hearts, Card 6 Diamonds, Card 8 Spades, Card 6 Spades, Card 14 Spades, Card 12 Diamonds] [] (Card 7 Hearts) [Card 9 Spades] 6
 
 -- Returns a list of cards that we haven't yet seen in the game
 -- = universe of cards

@@ -6,7 +6,15 @@ author:         mildbyte
 
 executable durak
   main-is:         Main.hs
-  build-depends:   base >= 4
+  build-depends:   
+                   base >= 4,
+                   QuickCheck >=2.7.3 && <2.8
   ghc-options:     -Wall
   hs-source-dirs:  src
+
+test-suite Test
+  type:            exitcode-stdio-1.0
+  build-depends:   base >= 4, QuickCheck
+  hs-source-dirs:  test src
+  main-is:         Tests.hs
 
