@@ -1,7 +1,7 @@
 -- Structures for game data and manipulating it
 module GameData where
 
-import Data.List (delete, (\\), nub, groupBy, subsequences)
+import Data.List ((\\), nub, groupBy, subsequences)
 import Data.Function (on)
 data Suit = Hearts | Diamonds | Clubs | Spades deriving (Show, Eq)
 data Card = Card 

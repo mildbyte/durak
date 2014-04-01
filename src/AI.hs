@@ -1,6 +1,6 @@
 module AI where
 
-import Data.List ((\\), delete, minimumBy, maximumBy, nub)
+import Data.List ((\\), maximumBy)
 import Data.Function (on)
 
 import GameData
