@@ -17,4 +17,3 @@ test-suite Test
   build-depends:   base >= 4, QuickCheck
   hs-source-dirs:  test src
   main-is:         Tests.hs
-
