@@ -55,7 +55,7 @@ prop_values gs c1@(Card v1 s1) c2@(Card v2 s2) =
                             && offenseValue c1 gs >= offenseValue c2 gs
                             
 -- If a card beats another card, it will have at least the same offense and defense values                           
-prop_beatval gs@(PlayerVisibleState _ _ (Card _ trump) _ _ _) c1 c2 =
+prop_beatval gs@(PlayerVisibleState _ _ (Card _ trump) _ _ _ _) c1 c2 =
     beats trump c1 c2 ==> defenseValue c1 gs >= defenseValue c2 gs
                        && offenseValue c1 gs >= offenseValue c2 gs
 

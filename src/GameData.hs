@@ -71,15 +71,16 @@ data PlayerVisibleState = PlayerVisibleState
         , trumpCard         :: Card
         , knownOpponentHand :: [Card]
         , opponentHandSize  :: Int
+        , remainingDeckSize :: Int
         , transientState    :: TransientState
         } deriving (Show, Eq)
 
 -- Constructs the state that will be visible by the player, hiding information
 preparePVS :: GameState -> Bool -> PlayerVisibleState
 preparePVS (GameState hand _ opHand koHand deck discard ds) True =
-    PlayerVisibleState hand discard (last deck) koHand (length opHand) ds
+    PlayerVisibleState hand discard (last deck) koHand (length opHand) (length deck) ds
 preparePVS (GameState opHand koHand hand _ deck discard ds) False =
-    PlayerVisibleState hand discard (last deck) koHand (length opHand) ds
+    PlayerVisibleState hand discard (last deck) koHand (length opHand) (length deck) ds
 
 data OffenseAction = Attack [Card]
                    | FinishAttack
@@ -129,7 +130,7 @@ applyDefenseAction gs@(GameState _ koHand hand _ _ _ ts) False GiveUp =
 -- take the Cartesian product of these lists and only keep the lists that represent a set.
 -- Each of these list is a way to beat the current cards.
 generateDefenseActions :: PlayerVisibleState -> [DefenseAction]
-generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ ts)
+generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ _ ts)
    | null validBeatings = [GiveUp]
    | otherwise          = map (Defend . zip (activeAttack ts)) validBeatings
    where cardsBeatC ac = filter (\pc -> beats (cardSuit $ trumpCard gs) pc ac) $ playerHand gs
@@ -142,7 +143,7 @@ generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ ts)
 -- if we are continuing the attack, take all subsets of the set of cards we have whose values
 -- are already on the desk.
 generateOffenseActions :: PlayerVisibleState -> [OffenseAction]
-generateOffenseActions (PlayerVisibleState hand _ _ _ _ ts)
+generateOffenseActions (PlayerVisibleState hand _ _ _ _ _ ts)
     | null $ allDeskCards ts = map Attack  . filter (not . null) . concatMap subsequences $ groupBy ((==) `on` cardValue) hand 
     | otherwise = FinishAttack : (map Attack . filter (not . null) . subsequences $ filter (flip elem attackValues . cardValue) hand)  
     where attackValues = map cardValue $ allDeskCards ts
