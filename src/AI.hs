@@ -3,8 +3,12 @@ module AI where
 import Data.List ((\\), delete, minimumBy, maximumBy, nub)
 import Data.Function (on)
 
-import GameEngine
+import GameData
 
+data AIPlayer = AIPlayer
+instance Player AIPlayer where
+    getOffenseAction _ gs actions = return $ chooseOffenseAction gs actions
+    getDefenseAction _ gs actions = return $ chooseDefenseAction gs actions
 
 -- Returns a list of cards that we haven't yet seen in the game
 -- = universe of cards
@@ -68,49 +72,20 @@ futureHandValue gs cs = if length cs >= 6 then hVal
 deckValue :: PlayerVisibleState -> Double
 deckValue gs = mean $ map (`defenseValue` gs) $ unseenCards gs
 
--- Calculates the offense action
--- Things to consider:
--- - probability of defender taking the cards
--- - minimizing defender's hand value
--- - future value of our hand (if we have to take cards from
---   the deck, what will be the value of our hand?)
--- Current strategy: pick the card with the smallest defense value if first turn,
--- abandon attack if we can't find any cards to attack with, 
--- otherwise find the card such that if we put it on the table and take another one
--- from the deck, adding it to our hand, we get the maximum hand value.
--- If this maximum value is smaller than what we will get if we abandon the attack,
--- then abandon the attack, otherwise, attack with the card.
-offenseAction :: PlayerVisibleState -> OffenseAction
-offenseAction gs@(PlayerVisibleState _ _ _ _ _ ts)
-    | ts == emptyTransientState = Attack $ pickFirstOffenseCard gs
-    | possibleAttackCards /= [] && bestCardFV > futureHand = Attack bestCard
-    | otherwise = FinishAttack
-        where cardFV c = futureHandValue gs $ delete c $ playerHand gs
-              bestCard = maximumBy (compare `on` cardFV) possibleAttackCards
-              bestCardFV = cardFV bestCard
-              futureHand = futureHandValue gs $ playerHand gs
-              possibleAttackCards = filter (flip elem deskCardValues . cardValue) $ playerHand gs
-              deskCardValues = map cardValue $ allDeskCards ts
+-- Evaluates an offense action by considering our hand value after taking the cards from the deck.
+evaluateOffenseAction :: PlayerVisibleState -> OffenseAction -> Double
+evaluateOffenseAction gs FinishAttack = futureHandValue gs $ playerHand gs
+evaluateOffenseAction gs (Attack cards) = futureHandValue gs $ playerHand gs \\ cards  
 
--- Picks a card to start the offense with, the least-valuable card for defense for now
-pickFirstOffenseCard :: PlayerVisibleState -> Card
-pickFirstOffenseCard gs =
-    minimumBy (\c1 c2 -> compare (defenseValue c1 gs) (defenseValue c2 gs)) (playerHand gs)
+-- Evaluates a defense action by considering our hand value if we give up and take cards
+-- or sacrifice our cards to defend against the attacking cards.
+evaluateDefenseAction :: PlayerVisibleState -> DefenseAction -> Double
+evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ ts) GiveUp = futureHandValue gs (hand ++ allDeskCards ts)
+evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _) (Defend cards) = futureHandValue gs (hand \\ map snd cards) 
 
--- Calculates the defense action
--- Things to consider:
--- - future value of our hand if we take the cards on desk
---   or cards in the deck after we successfully defend
--- - how close are we to the end of the game?
-defenseAction :: PlayerVisibleState -> [DefenseAction]
-defenseAction gs@(PlayerVisibleState _ _ _ _ _ ts)
-   | null validBeatings       = [GiveUp]
-   | bestBeatingFV < giveUpFV = [GiveUp]
-   | otherwise                = zipWith Defend (activeAttack ts) bestBeating
-   where cardsBeatC ac = filter (\pc -> beats (cardSuit $ trumpCard gs) pc ac) $ playerHand gs
-         beatingCards  = map cardsBeatC $ activeAttack ts
-         validBeatings = filter (\xs -> nub xs == xs) $ sequence beatingCards
-         giveUpFV      = handValue gs $ allDeskCards ts ++ playerHand gs
-         beatingFV b   = handValue gs $ playerHand gs \\ b
-         bestBeating   = maximumBy (compare `on` beatingFV) validBeatings
-         bestBeatingFV = beatingFV bestBeating
+-- Choosing an action for now is just about finding one with the maximum value.
+chooseDefenseAction :: PlayerVisibleState -> [DefenseAction] -> DefenseAction
+chooseDefenseAction gs = maximumBy (compare `on` evaluateDefenseAction gs)
+
+chooseOffenseAction :: PlayerVisibleState -> [OffenseAction] -> OffenseAction
+chooseOffenseAction gs = maximumBy (compare `on` evaluateOffenseAction gs)

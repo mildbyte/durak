@@ -3,7 +3,7 @@
 module Main where
 import Test.QuickCheck
 import Test.QuickCheck.All
-import GameEngine
+import GameData
 import AI
 import Data.List (delete)
 
