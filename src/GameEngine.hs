@@ -26,15 +26,16 @@ topUp gs@(GameState _ _ p2 _ deck _ _) False =
 -- possible attacks. If the player doesn't want to attack anymore (can only happen after the first
 -- attack), the turn ends and the game state is changed. Otherwise, it's the second player's turn
 -- to defend: he chooses a defense action from a generated list, if he chooses to give up, the turn
--- is ended, if not, then it's again the first player's turn to respond. 
+-- is ended, if not, then it's again the first player's turn to respond.
+-- Returns the final game state and a flag corresponding to whether the player successfully defended.
+
 -- TODO: AARGH UNSAFEPERFORMIO PUT THINGS INTO MONADS
 -- TODO: attack and defend seem to be very similar to each other, maybe there is a chance to merge them.
 -- TODO: boolean flags to choose players seem crude.
--- TODO: need to know if the turn ended because a player gave up or because a player finished their attack
-attack :: Player p => p -> p -> GameState -> Bool -> GameState
+attack :: Player p => p -> p -> GameState -> Bool -> (GameState, Bool)
 attack p1 p2 gs isPlayer1 = 
     case playerChoice of 
-         FinishAttack -> newState
+         FinishAttack -> (newState, True)
          _            -> defend p1 p2 newState (not isPlayer1)
     where player       = if isPlayer1 then p1 else p2
           playerState  = preparePVS gs isPlayer1
@@ -42,10 +43,10 @@ attack p1 p2 gs isPlayer1 =
           playerChoice = unsafePerformIO $ getOffenseAction player playerState possible -- AAARGH FIX FIX FIX
           newState     = applyOffenseAction gs isPlayer1 playerChoice
 
-defend :: Player p => p -> p -> GameState -> Bool -> GameState
+defend :: Player p => p -> p -> GameState -> Bool -> (GameState, Bool)
 defend p1 p2 gs isPlayer1 =
     case playerChoice of 
-         GiveUp    -> newState
+         GiveUp    -> (newState, False)
          _         -> attack p1 p2 newState (not isPlayer1)
     where player       = if isPlayer1 then p1 else p2
           playerState  = preparePVS gs isPlayer1
