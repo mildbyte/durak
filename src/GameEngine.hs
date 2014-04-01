@@ -35,7 +35,7 @@ attack :: Player p => p -> p -> GameState -> Bool -> GameState
 attack p1 p2 gs isPlayer1 = 
     case playerChoice of 
          FinishAttack -> newState
-         _            -> defend p1 p2 gs (not isPlayer1)
+         _            -> defend p1 p2 newState (not isPlayer1)
     where player       = if isPlayer1 then p1 else p2
           playerState  = preparePVS gs isPlayer1
           possible     = generateOffenseActions playerState
@@ -46,7 +46,7 @@ defend :: Player p => p -> p -> GameState -> Bool -> GameState
 defend p1 p2 gs isPlayer1 =
     case playerChoice of 
          GiveUp    -> newState
-         _         -> attack p1 p2 gs (not isPlayer1)
+         _         -> attack p1 p2 newState (not isPlayer1)
     where player       = if isPlayer1 then p1 else p2
           playerState  = preparePVS gs isPlayer1
           possible     = generateDefenseActions playerState
