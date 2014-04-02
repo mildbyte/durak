@@ -1,22 +1,23 @@
 module GameEngine where
 
 import GameData
-import AI
 import System.IO.Unsafe (unsafePerformIO)
+import System.Random (StdGen, randoms)
+import Data.List (delete)
 
 -- Game over if no cards remain in the deck and on the table and one of the players
 -- has no cards.
 gameOver :: GameState -> Bool
-gameOver (GameState p1 _ p2 _ [] _ (TransientState [] [] [])) = null p1 || null p2
+gameOver (GameState p1 _ p2 _ _ [] _ (TransientState [] [] [])) = null p1 || null p2
 gameOver _ = False
 
 -- Simulates a player taking cards from the deck
 topUp :: GameState -> Bool -> GameState
-topUp gs@(GameState p1 _ _ _ deck _ _) True =
+topUp gs@(GameState p1 _ _ _ _ deck _ _) True =
     gs {player1Hand   = p1 ++ take number deck,
         remainingDeck = drop number deck} 
     where number = min 6 (length p1 + length deck)
-topUp gs@(GameState _ _ p2 _ deck _ _) False =
+topUp gs@(GameState _ _ p2 _ _ deck _ _) False =
     gs {player2Hand   = p2 ++ take number deck,
         remainingDeck = drop number deck} 
     where number = min 6 (length p2 + length deck)
@@ -53,3 +54,27 @@ defend p1 p2 gs isPlayer1 =
           possible     = generateDefenseActions playerState
           playerChoice = unsafePerformIO $ getDefenseAction player playerState possible -- AAARGH FIX FIX FIX
           newState     = applyDefenseAction gs isPlayer1 playerChoice
+
+turn :: Player p => p -> p -> GameState -> Bool -> Bool
+turn p1 p2 gs isPlayer1 =
+    if gameOver gs then null (player1Hand gs)
+    else
+        turn p1 p2 newGS (if turnSwitch then not isPlayer1 else isPlayer1)
+        where (newGS, turnSwitch) = attack p1 p2 gs isPlayer1 
+        
+shuffle' :: [Int] -> [a] -> [a]
+shuffle' _ []          = []
+shuffle' (i:is) (x:xs) = let s      = shuffle' is xs
+                             (l, r) = splitAt (if null xs then 0 else i `mod` length xs) s 
+                         in l ++ (x:r)
+                         
+shuffle :: StdGen -> [a] -> [a]
+shuffle s = shuffle' $ randoms s
+
+-- Generates an initial game state
+generateGame :: StdGen -> GameState
+generateGame gen = GameState p1 [] p2 [] (last remD) remD [] emptyTransientState
+    where deck = shuffle gen universe
+          p1   = take 6 deck
+          p2   = take 6 $ drop 6 deck
+          remD = drop 12 deck

@@ -43,6 +43,7 @@ data GameState = GameState
         , takenByP1     :: [Card] -- Cards in P1's hand that they took when giving up defense
         , player2Hand   :: [Card]
         , takenByP2     :: [Card]
+        , gstrumpCard   :: Card   -- Trump card (also duplicated in the remaining deck)
         , remainingDeck :: [Card]
         , discardPile   :: [Card]
         , deskState     :: TransientState
@@ -77,10 +78,10 @@ data PlayerVisibleState = PlayerVisibleState
 
 -- Constructs the state that will be visible by the player, hiding information
 preparePVS :: GameState -> Bool -> PlayerVisibleState
-preparePVS (GameState hand _ opHand koHand deck discard ds) True =
-    PlayerVisibleState hand discard (last deck) koHand (length opHand) (length deck) ds
-preparePVS (GameState opHand koHand hand _ deck discard ds) False =
-    PlayerVisibleState hand discard (last deck) koHand (length opHand) (length deck) ds
+preparePVS (GameState hand _ opHand koHand trump deck discard ds) True =
+    PlayerVisibleState hand discard trump koHand (length opHand) (length deck) ds
+preparePVS (GameState opHand koHand hand _ trump deck discard ds) False =
+    PlayerVisibleState hand discard trump koHand (length opHand) (length deck) ds
 
 data OffenseAction = Attack [Card]
                    | FinishAttack
@@ -95,33 +96,33 @@ data DefenseAction = Defend [(Card, Card)]
 -- Applies an offense action to the game state
 -- The boolean parameter is whether player 1 performed the action
 applyOffenseAction :: GameState -> Bool -> OffenseAction -> GameState
-applyOffenseAction gs@(GameState _ _ _ _ dp _ (TransientState ia ind _)) _ FinishAttack =
+applyOffenseAction gs@(GameState _ _ _ _ _ dp _ (TransientState ia ind _)) _ FinishAttack =
     gs {discardPile = dp ++ ia ++ ind}
-applyOffenseAction gs@(GameState hand _ _ koHand _ _ ts@(TransientState _ _ aa)) True (Attack cards) =
+applyOffenseAction gs@(GameState hand _ _ koHand _ _ _ ts@(TransientState _ _ aa)) True (Attack cards) =
     gs {player1Hand = hand \\ cards, takenByP2 = koHand \\ cards, deskState = ts {activeAttack = cards ++ aa}}
-applyOffenseAction gs@(GameState _ koHand hand _ _ _ ts@(TransientState _ _ aa)) False (Attack cards) =
+applyOffenseAction gs@(GameState _ koHand hand _ _ _ _ ts@(TransientState _ _ aa)) False (Attack cards) =
     gs {player2Hand = hand \\ cards, takenByP1 = koHand \\ cards, deskState = ts {activeAttack = cards ++ aa}}
 
 -- Applies a defense action to the game state
 -- The boolean parameter is whether player 1 performed the action.
 applyDefenseAction :: GameState -> Bool -> DefenseAction -> GameState
-applyDefenseAction gs@(GameState hand _ _ koHand _ _ ts@(TransientState ia ind aa)) True (Defend cards) =
+applyDefenseAction gs@(GameState hand _ _ koHand _ _ _ ts@(TransientState ia ind aa)) True (Defend cards) =
     gs {player1Hand = hand \\ with, takenByP1 = koHand \\ with, 
         deskState= ts {inactiveAttack  = against ++ ia,
                        activeAttack    = aa \\ against,
                        inactiveDefense = ind ++ with}}
     where against = map fst cards
           with    = map snd cards 
-applyDefenseAction gs@(GameState _ koHand hand _ _ _ ts@(TransientState ia ind aa)) False (Defend cards) =
+applyDefenseAction gs@(GameState _ koHand hand _ _ _ _ ts@(TransientState ia ind aa)) False (Defend cards) =
     gs {player2Hand = hand \\ with, takenByP2 = koHand \\ with, 
         deskState= ts {inactiveAttack  = against ++ ia,
                        activeAttack    = aa \\ against,
                        inactiveDefense = ind ++ with}}
     where against = map fst cards
           with    = map snd cards
-applyDefenseAction gs@(GameState hand _ _ koHand _ _ ts) True GiveUp =
+applyDefenseAction gs@(GameState hand _ _ koHand _ _ _ ts) True GiveUp =
     gs {player1Hand = hand ++ allDeskCards ts, takenByP2 = koHand ++ allDeskCards ts, deskState = emptyTransientState} 
-applyDefenseAction gs@(GameState _ koHand hand _ _ _ ts) False GiveUp =
+applyDefenseAction gs@(GameState _ koHand hand _ _ _ _ ts) False GiveUp =
     gs {player2Hand = hand ++ allDeskCards ts, takenByP1 = koHand ++ allDeskCards ts, deskState = emptyTransientState}
 
 -- Generates all possible defense actions:

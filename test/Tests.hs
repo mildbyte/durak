@@ -5,7 +5,9 @@ import Test.QuickCheck
 import Test.QuickCheck.All
 import GameData
 import AI
-import Data.List (delete)
+import Data.List (delete, sort)
+import GameEngine
+import System.Random (mkStdGen)
 
 instance Arbitrary Card where
     arbitrary = elements universe
@@ -21,7 +23,7 @@ instance Arbitrary GameState where
         p2KnownHandSize <- choose (0, 6)
         discardPileSize <- choose (0, 35 - (p1HandSize + p2HandSize)) 
          
-        deck <- shuffle universe
+        deck <- testShuffle universe
         
         let p1Hand  = take p1HandSize deck
         let p2Hand  = take p2HandSize $ drop p1HandSize deck
@@ -30,7 +32,7 @@ instance Arbitrary GameState where
         let discard = take discardPileSize $ drop (p1HandSize + p2HandSize) deck
         let remain  = drop (p1HandSize + p2HandSize + discardPileSize) deck        
          
-        return $ GameState p1Hand p1Known p2Hand p2Known remain discard emptyTransientState
+        return $ GameState p1Hand p1Known p2Hand p2Known (last remain) remain discard emptyTransientState
 
 instance Arbitrary PlayerVisibleState where
     arbitrary = do
@@ -38,11 +40,11 @@ instance Arbitrary PlayerVisibleState where
         gameState <- arbitrary
         return $ preparePVS gameState isPlayer1
      
-shuffle :: (Eq a) => [a] -> Gen [a]
-shuffle [] = return []
-shuffle xs = do x <- oneof $ map return xs
-                ys <- shuffle $ delete x xs
-                return (x:ys)
+testShuffle :: (Eq a) => [a] -> Gen [a]
+testShuffle [] = return []
+testShuffle xs = do x <- oneof $ map return xs
+                    ys <- testShuffle $ delete x xs
+                    return (x:ys)
 
 -- Checking that beats is a strict partial order
 prop_beatsTrans tr c1 c2 c3 = (beats tr c1 c2 && beats tr c2 c3) ==> beats tr c1 c3
@@ -58,6 +60,8 @@ prop_values gs c1@(Card v1 s1) c2@(Card v2 s2) =
 prop_beatval gs@(PlayerVisibleState _ _ (Card _ trump) _ _ _ _) c1 c2 =
     beats trump c1 c2 ==> defenseValue c1 gs >= defenseValue c2 gs
                        && offenseValue c1 gs >= offenseValue c2 gs
+
+prop_shuffle list = sort (GameEngine.shuffle (mkStdGen 42) list) == sort list
 
 runTests :: IO Bool
 runTests = $quickCheckAll

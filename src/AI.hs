@@ -13,6 +13,7 @@ instance Player AIPlayer where
 -- Returns a list of cards that we haven't yet seen in the game
 -- = universe of cards
 -- - our hand - discard pile - face-up trump card - cards we know the opponent has - transient state
+-- TODO: trump card sometimes is in the deck, sometimes not
 unseenCards :: PlayerVisibleState -> [Card]
 unseenCards (PlayerVisibleState p d t c _ _ ts) =
     universe \\ (t : p ++ d ++ c ++ allDeskCards ts)
