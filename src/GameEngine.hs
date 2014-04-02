@@ -16,11 +16,11 @@ topUp :: GameState -> Bool -> GameState
 topUp gs@(GameState p1 _ _ _ _ deck _ _) True =
     gs {player1Hand   = p1 ++ take number deck,
         remainingDeck = drop number deck} 
-    where number = min 6 (length p1 + length deck)
+    where number = min (length deck) $ max (6 - length p1) 0
 topUp gs@(GameState _ _ p2 _ _ deck _ _) False =
     gs {player2Hand   = p2 ++ take number deck,
         remainingDeck = drop number deck} 
-    where number = min 6 (length p2 + length deck)
+    where number = min (length deck) $ max (6 - length p2) 0
 
 -- Performs a turn in the game.
 -- The turn starts with an attack: the first player chooses an attack from the generated list of
@@ -59,14 +59,15 @@ turn :: Player p => p -> p -> GameState -> Bool -> Bool
 turn p1 p2 gs isPlayer1 =
     if gameOver gs then null (player1Hand gs)
     else
-        turn p1 p2 newGS (if turnSwitch then not isPlayer1 else isPlayer1)
+        turn p1 p2 toppedUpGS (if turnSwitch then not isPlayer1 else isPlayer1)
         where (newGS, turnSwitch) = attack p1 p2 gs isPlayer1 
-        
+              toppedUpGS           = topUp (topUp newGS isPlayer1) (not isPlayer1)
+              
 shuffle' :: [Int] -> [a] -> [a]
 shuffle' _ []          = []
 shuffle' _ [x]         = [x]
 shuffle' (i:is) (x:xs) = let s      = shuffle' is xs
-                             (l, r) = splitAt (i `mod` length xs) s 
+                             (l, r) = splitAt (i `mod` (length xs + 1)) s 
                          in l ++ (x:r)
                          
 shuffle :: StdGen -> [a] -> [a]

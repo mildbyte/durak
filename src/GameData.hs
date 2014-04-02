@@ -1,7 +1,7 @@
 -- Structures for game data and manipulating it
 module GameData where
 
-import Data.List ((\\), nub, groupBy, subsequences)
+import Data.List ((\\), nub, groupBy, subsequences, sortBy)
 import Data.Function (on)
 data Suit = Hearts | Diamonds | Clubs | Spades deriving (Show, Eq)
 data Card = Card 
@@ -96,34 +96,34 @@ data DefenseAction = Defend [(Card, Card)]
 -- Applies an offense action to the game state
 -- The boolean parameter is whether player 1 performed the action
 applyOffenseAction :: GameState -> Bool -> OffenseAction -> GameState
-applyOffenseAction gs@(GameState _ _ _ _ _ dp _ (TransientState ia ind _)) _ FinishAttack =
-    gs {discardPile = dp ++ ia ++ ind}
-applyOffenseAction gs@(GameState hand _ _ koHand _ _ _ ts@(TransientState _ _ aa)) True (Attack cards) =
-    gs {player1Hand = hand \\ cards, takenByP2 = koHand \\ cards, deskState = ts {activeAttack = cards ++ aa}}
-applyOffenseAction gs@(GameState _ koHand hand _ _ _ _ ts@(TransientState _ _ aa)) False (Attack cards) =
-    gs {player2Hand = hand \\ cards, takenByP1 = koHand \\ cards, deskState = ts {activeAttack = cards ++ aa}}
+applyOffenseAction gs@(GameState _ _ _ _ _ _ dp (TransientState ia ind _)) _ FinishAttack =
+    gs {discardPile = dp ++ ia ++ ind, deskState = emptyTransientState}
+applyOffenseAction gs@(GameState hand koHand _ _ _ _ _ ts@(TransientState _ _ aa)) True (Attack cards) =
+    gs {player1Hand = hand \\ cards, takenByP1 = koHand \\ cards, deskState = ts {activeAttack = cards ++ aa}}
+applyOffenseAction gs@(GameState _ _ hand koHand _ _ _ ts@(TransientState _ _ aa)) False (Attack cards) =
+    gs {player2Hand = hand \\ cards, takenByP2 = koHand \\ cards, deskState = ts {activeAttack = cards ++ aa}}
 
 -- Applies a defense action to the game state
 -- The boolean parameter is whether player 1 performed the action.
 applyDefenseAction :: GameState -> Bool -> DefenseAction -> GameState
-applyDefenseAction gs@(GameState hand _ _ koHand _ _ _ ts@(TransientState ia ind aa)) True (Defend cards) =
+applyDefenseAction gs@(GameState hand koHand _ _ _ _ _ ts@(TransientState ia ind aa)) True (Defend cards) =
     gs {player1Hand = hand \\ with, takenByP1 = koHand \\ with, 
         deskState= ts {inactiveAttack  = against ++ ia,
                        activeAttack    = aa \\ against,
                        inactiveDefense = ind ++ with}}
     where against = map fst cards
           with    = map snd cards 
-applyDefenseAction gs@(GameState _ koHand hand _ _ _ _ ts@(TransientState ia ind aa)) False (Defend cards) =
+applyDefenseAction gs@(GameState _ _ hand koHand _ _ _ ts@(TransientState ia ind aa)) False (Defend cards) =
     gs {player2Hand = hand \\ with, takenByP2 = koHand \\ with, 
         deskState= ts {inactiveAttack  = against ++ ia,
                        activeAttack    = aa \\ against,
                        inactiveDefense = ind ++ with}}
     where against = map fst cards
           with    = map snd cards
-applyDefenseAction gs@(GameState hand _ _ koHand _ _ _ ts) True GiveUp =
-    gs {player1Hand = hand ++ allDeskCards ts, takenByP2 = koHand ++ allDeskCards ts, deskState = emptyTransientState} 
-applyDefenseAction gs@(GameState _ koHand hand _ _ _ _ ts) False GiveUp =
-    gs {player2Hand = hand ++ allDeskCards ts, takenByP1 = koHand ++ allDeskCards ts, deskState = emptyTransientState}
+applyDefenseAction gs@(GameState hand koHand _ _ _ _ _ ts) True GiveUp =
+    gs {player1Hand = hand ++ allDeskCards ts, takenByP1 = koHand ++ allDeskCards ts, deskState = emptyTransientState} 
+applyDefenseAction gs@(GameState _ _ hand koHand _ _ _ ts) False GiveUp =
+    gs {player2Hand = hand ++ allDeskCards ts, takenByP2 = koHand ++ allDeskCards ts, deskState = emptyTransientState}
 
 -- Generates all possible defense actions:
 -- if the player can't beat the current cards, give up
@@ -131,12 +131,11 @@ applyDefenseAction gs@(GameState _ koHand hand _ _ _ _ ts) False GiveUp =
 -- take the Cartesian product of these lists and only keep the lists that represent a set.
 -- Each of these list is a way to beat the current cards.
 generateDefenseActions :: PlayerVisibleState -> [DefenseAction]
-generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ _ ts)
-   | null validBeatings = [GiveUp]
-   | otherwise          = map (Defend . zip (activeAttack ts)) validBeatings
-   where cardsBeatC ac = filter (\pc -> beats (cardSuit $ trumpCard gs) pc ac) $ playerHand gs
-         beatingCards  = map cardsBeatC $ activeAttack ts 
-         validBeatings = filter (\xs -> nub xs == xs) $ sequence beatingCards
+generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ _ ts) =
+    GiveUp : map (Defend . zip (activeAttack ts)) validBeatings
+    where cardsBeatC ac = filter (\pc -> beats (cardSuit $ trumpCard gs) pc ac) $ playerHand gs
+          beatingCards  = map cardsBeatC $ activeAttack ts 
+          validBeatings = filter (\xs -> nub xs == xs) $ sequence beatingCards
 
 -- Generates all possible attack actions:
 -- if we are opening the attack, take subsets of sets of cards that we have of equal value
@@ -144,9 +143,11 @@ generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ _ ts)
 -- if we are continuing the attack, take all subsets of the set of cards we have whose values
 -- are already on the desk.
 generateOffenseActions :: PlayerVisibleState -> [OffenseAction]
-generateOffenseActions (PlayerVisibleState hand _ _ _ _ _ ts)
-    | null $ allDeskCards ts = map Attack  . filter (not . null) . concatMap subsequences $ groupBy ((==) `on` cardValue) hand 
-    | otherwise = FinishAttack : (map Attack . filter (not . null) . subsequences $ filter (flip elem attackValues . cardValue) hand)  
+generateOffenseActions (PlayerVisibleState hand _ _ _ opHandSize _ ts)
+    | opHandSize == 0        = [FinishAttack]
+    | null $ allDeskCards ts = map Attack  . filter ((>=) opHandSize . length) . filter (not . null) . concatMap subsequences $ 
+        groupBy ((==) `on` cardValue) $ sortBy (compare `on` cardValue) hand -- group into equivalence classes on card values 
+    | otherwise              = FinishAttack : (map Attack . filter (not . null) . subsequences $ filter (flip elem attackValues . cardValue) hand)  
     where attackValues = map cardValue $ allDeskCards ts
    
 
