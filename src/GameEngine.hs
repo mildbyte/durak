@@ -1,7 +1,6 @@
 module GameEngine where
 
 import GameData
-import System.IO.Unsafe (unsafePerformIO)
 import System.Random (StdGen, randoms)
 import Data.List (delete)
 
@@ -30,38 +29,40 @@ topUp gs@(GameState _ _ p2 _ _ deck _ _) False =
 -- is ended, if not, then it's again the first player's turn to respond.
 -- Returns the final game state and a flag corresponding to whether the player successfully defended.
 
--- TODO: AARGH UNSAFEPERFORMIO PUT THINGS INTO MONADS
 -- TODO: attack and defend seem to be very similar to each other, maybe there is a chance to merge them.
 -- TODO: boolean flags to choose players seem crude.
-attack :: Player -> Player -> GameState -> Bool -> (GameState, Bool)
-attack p1 p2 gs isPlayer1 = 
+attack :: Player -> Player -> GameState -> Bool -> IO(GameState, Bool)
+attack p1 p2 gs isPlayer1 = do
+    let (player, opp) = if isPlayer1 then (p1, p2) else (p2, p1)
+    let playerState   = preparePVS gs isPlayer1
+    playerChoice <- getOffenseAction player playerState (generateOffenseActions playerState)
+    reactToOffense opp playerChoice
+    let newState = applyOffenseAction gs isPlayer1 playerChoice
+
     case playerChoice of 
-         FinishAttack -> (newState, True)
+         FinishAttack -> return (newState, True)
          _            -> defend p1 p2 newState (not isPlayer1)
-    where player       = if isPlayer1 then p1 else p2
-          playerState  = preparePVS gs isPlayer1
-          possible     = generateOffenseActions playerState
-          playerChoice = unsafePerformIO $ getOffenseAction player playerState possible -- AAARGH FIX FIX FIX
-          newState     = applyOffenseAction gs isPlayer1 playerChoice
 
-defend :: Player -> Player -> GameState -> Bool -> (GameState, Bool)
-defend p1 p2 gs isPlayer1 =
+defend :: Player -> Player -> GameState -> Bool -> IO(GameState, Bool)
+defend p1 p2 gs isPlayer1 = do
+    let (player, opp) = if isPlayer1 then (p1, p2) else (p2, p1)
+    let playerState   = preparePVS gs isPlayer1
+    playerChoice <- getDefenseAction player playerState (generateDefenseActions playerState)
+    reactToDefense opp playerChoice
+    let newState = applyDefenseAction gs isPlayer1 playerChoice
+
     case playerChoice of 
-         GiveUp    -> (newState, False)
-         _         -> attack p1 p2 newState (not isPlayer1)
-    where player       = if isPlayer1 then p1 else p2  
-          playerState  = preparePVS gs isPlayer1
-          possible     = generateDefenseActions playerState
-          playerChoice = unsafePerformIO $ getDefenseAction player playerState possible -- AAARGH FIX FIX FIX
-          newState     = applyDefenseAction gs isPlayer1 playerChoice
+         GiveUp -> return (newState, False)
+         _      -> attack p1 p2 newState (not isPlayer1)
+        
 
-turn :: Player -> Player -> GameState -> Bool -> Bool
+turn :: Player -> Player -> GameState -> Bool -> IO Bool
 turn p1 p2 gs isPlayer1 =
-    if gameOver gs then null (player1Hand gs)
-    else
+    if gameOver gs then return $ null (player1Hand gs)
+    else do
+        (newGS, turnSwitch) <- attack p1 p2 gs isPlayer1
+        let toppedUpGS = topUp (topUp newGS isPlayer1) (not isPlayer1)
         turn p1 p2 toppedUpGS (if turnSwitch then not isPlayer1 else isPlayer1)
-        where (newGS, turnSwitch) = attack p1 p2 gs isPlayer1 
-              toppedUpGS           = topUp (topUp newGS isPlayer1) (not isPlayer1)
               
 shuffle' :: [Int] -> [a] -> [a]
 shuffle' _ []          = []

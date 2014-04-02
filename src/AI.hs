@@ -5,8 +5,11 @@ import Data.Function (on)
 
 import GameData
 
+nothing :: a -> IO()
+nothing _ = return()
+
 aiPlayer :: Player
-aiPlayer = Player daWrapper oaWrapper
+aiPlayer = Player daWrapper oaWrapper nothing nothing
 
 oaWrapper gs actions = return $ chooseOffenseAction gs actions
 daWrapper gs actions = return $ chooseDefenseAction gs actions

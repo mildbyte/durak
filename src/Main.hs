@@ -11,5 +11,5 @@ main = do
     let game = generateGame gen
     let p1 = humanPlayer
     let p2 = aiPlayer
-    let win = turn p1 p2 game True
+    win <- turn p1 p2 game True
     print win

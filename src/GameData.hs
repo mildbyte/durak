@@ -156,4 +156,6 @@ generateOffenseActions (PlayerVisibleState hand _ _ _ opHandSize _ ts)
 data Player = Player {
                        getDefenseAction :: PlayerVisibleState -> [DefenseAction] -> IO DefenseAction
                      , getOffenseAction :: PlayerVisibleState -> [OffenseAction] -> IO OffenseAction
+                     , reactToDefense   :: DefenseAction -> IO()
+                     , reactToOffense   :: OffenseAction -> IO()
                      }
