@@ -86,9 +86,9 @@ futureHandValue gs cs
                      then fromIntegral (length cs) / 6.0
                      else fromIntegral (length cs + 1) / fromIntegral lensum
           hVal     = if lensum > 6
-                     then handValue gs cs 6
-                     else handValue gs (trumpCard gs : cs) lensum  -- will take the trump card
-          dVal     = deckValue gs
+                     then handValue gs cs (6 - length cs)
+                     else handValue gs (trumpCard gs : cs) (remainingDeckSize gs - 1)  -- will take all cards from the deck
+          dVal     = deckValue gs                                                      -- but one of them is known
           lensum   = length cs + remainingDeckSize gs
 
 -- Evaluates the average value of the cards in the deck

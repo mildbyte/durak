@@ -67,6 +67,10 @@ prop_hvsanity gs = hVal <= 1.0 && hVal >= 0.0
     where hVal = handValue gs (playerHand gs) 0
 prop_fhvsanity gs = hVal <= 1.0 && hVal >= 0.0
     where hVal = futureHandValue gs (playerHand gs)
+    
+-- If a card has a larger defense score, removing it from the hand will result in a weaker card.
+prop_fhv gs = (length (playerHand gs) > 2 && defenseValue (head (playerHand gs)) gs > defenseValue (playerHand gs !! 1) gs)
+    ==> futureHandValue gs (delete (head (playerHand gs)) $ playerHand gs) <= futureHandValue gs (delete (playerHand gs !! 1) $ playerHand gs)
 
 
 runTests :: IO Bool
