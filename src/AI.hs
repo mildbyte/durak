@@ -27,15 +27,19 @@ unseenCards (PlayerVisibleState p d t c _ _ ts) =
 -- Makes the estimate more precise by considering the cards
 -- we know the opponent has.
 cardFraction :: (Card -> Bool) -> PlayerVisibleState -> Double
-cardFraction p state@(PlayerVisibleState _ _ _ knownCards opHandSize _ _) =
-    if knownLength == 0 then unknownEstimate
-    else knownWeight * knownFraction + (1 - knownWeight) * unknownEstimate
-    where
-        knownWeight = knownLength / fromIntegral opHandSize
-        knownFraction = fromIntegral (length $ filter p knownCards) / knownLength
+cardFraction p
+  state@(PlayerVisibleState _ _ _ knownCards opHandSize _ _)
+  | knownLength == 0 = unknownEstimate
+  | null possibleCards = knownFraction
+  | otherwise =
+    knownWeight * knownFraction + (1 - knownWeight) * unknownEstimate
+  where knownWeight = knownLength / fromIntegral opHandSize
+        knownFraction
+          = fromIntegral (length $ filter p knownCards) / knownLength
         knownLength = fromIntegral $ length knownCards
-        unknownEstimate = fromIntegral (length $ filter p possibleCards) / 
-                          fromIntegral (length possibleCards)
+        unknownEstimate
+          = fromIntegral (length $ filter p possibleCards) /
+              fromIntegral (length possibleCards)
         possibleCards = unseenCards state
         
 -- The expected value of the fraction of cards
@@ -55,8 +59,11 @@ defenseValue card state =
 -- TODO: small hands more valuable (after the deck runs out), but we would know the opponent's hand
 -- by then; use minmax?
 cardNumberMultiplier :: Int -> Double
-cardNumberMultiplier n = if n <= 6 then 1.0
-                                   else 1.0 / (fromIntegral n - 6.0)
+cardNumberMultiplier n 
+    | n == 6 = 1.0
+    | n == 0 = 9000
+    | n >  6 = 1.0 / (fromIntegral n - 6.0)
+    | n <  6 = 1 + 1.0 / fromIntegral n
 
 mean :: [Double] -> Double
 mean xs = sum xs / fromIntegral (length xs)

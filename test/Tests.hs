@@ -63,6 +63,12 @@ prop_beatval gs@(PlayerVisibleState _ _ (Card _ trump) _ _ _ _) c1 c2 =
 
 prop_shuffle list = sort (GameEngine.shuffle (mkStdGen 42) list) == sort list
 
+prop_hvsanity gs = hVal <= 1.0 && hVal >= 0.0
+    where hVal = handValue gs (playerHand gs) 0
+prop_fhvsanity gs = hVal <= 1.0 && hVal >= 0.0
+    where hVal = futureHandValue gs (playerHand gs)
+
+
 runTests :: IO Bool
 runTests = $quickCheckAll
 
