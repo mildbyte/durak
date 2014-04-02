@@ -5,10 +5,11 @@ import Data.Function (on)
 
 import GameData
 
-data AIPlayer = AIPlayer
-instance Player AIPlayer where
-    getOffenseAction _ gs actions = return $ chooseOffenseAction gs actions
-    getDefenseAction _ gs actions = return $ chooseDefenseAction gs actions
+aiPlayer :: Player
+aiPlayer = Player daWrapper oaWrapper
+
+oaWrapper gs actions = return $ chooseOffenseAction gs actions
+daWrapper gs actions = return $ chooseDefenseAction gs actions
 
 -- Returns a list of cards that we haven't yet seen in the game
 -- = universe of cards

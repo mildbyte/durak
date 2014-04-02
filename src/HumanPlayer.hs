@@ -2,11 +2,7 @@ module HumanPlayer where
 import GameData
 import Control.Monad (forM_)
 
-data HumanPlayer = HumanPlayer
-
-instance Player HumanPlayer where
-    getDefenseAction _ = inputAction
-    getOffenseAction _ = inputAction
+humanPlayer = Player inputAction inputAction
 
 inputAction pvs@(PlayerVisibleState hand _ trump _ _ _ transientState) actions = do
     print pvs

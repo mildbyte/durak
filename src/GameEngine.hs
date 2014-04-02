@@ -33,7 +33,7 @@ topUp gs@(GameState _ _ p2 _ _ deck _ _) False =
 -- TODO: AARGH UNSAFEPERFORMIO PUT THINGS INTO MONADS
 -- TODO: attack and defend seem to be very similar to each other, maybe there is a chance to merge them.
 -- TODO: boolean flags to choose players seem crude.
-attack :: Player p => p -> p -> GameState -> Bool -> (GameState, Bool)
+attack :: Player -> Player -> GameState -> Bool -> (GameState, Bool)
 attack p1 p2 gs isPlayer1 = 
     case playerChoice of 
          FinishAttack -> (newState, True)
@@ -44,18 +44,18 @@ attack p1 p2 gs isPlayer1 =
           playerChoice = unsafePerformIO $ getOffenseAction player playerState possible -- AAARGH FIX FIX FIX
           newState     = applyOffenseAction gs isPlayer1 playerChoice
 
-defend :: Player p => p -> p -> GameState -> Bool -> (GameState, Bool)
+defend :: Player -> Player -> GameState -> Bool -> (GameState, Bool)
 defend p1 p2 gs isPlayer1 =
     case playerChoice of 
          GiveUp    -> (newState, False)
          _         -> attack p1 p2 newState (not isPlayer1)
-    where player       = if isPlayer1 then p1 else p2
+    where player       = if isPlayer1 then p1 else p2  
           playerState  = preparePVS gs isPlayer1
           possible     = generateDefenseActions playerState
           playerChoice = unsafePerformIO $ getDefenseAction player playerState possible -- AAARGH FIX FIX FIX
           newState     = applyDefenseAction gs isPlayer1 playerChoice
 
-turn :: Player p => p -> p -> GameState -> Bool -> Bool
+turn :: Player -> Player -> GameState -> Bool -> Bool
 turn p1 p2 gs isPlayer1 =
     if gameOver gs then null (player1Hand gs)
     else

@@ -153,6 +153,7 @@ generateOffenseActions (PlayerVisibleState hand _ _ _ opHandSize _ ts)
 
 -- A player can react to game state with defensive or offensive actions.
 -- The functions return monads in case the player is human-controlled.
-class Player p where
-    getDefenseAction :: p -> PlayerVisibleState -> [DefenseAction] -> IO DefenseAction
-    getOffenseAction :: p -> PlayerVisibleState -> [OffenseAction] -> IO OffenseAction
+data Player = Player {
+                       getDefenseAction :: PlayerVisibleState -> [DefenseAction] -> IO DefenseAction
+                     , getOffenseAction :: PlayerVisibleState -> [OffenseAction] -> IO OffenseAction
+                     }
