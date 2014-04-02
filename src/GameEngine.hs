@@ -64,8 +64,9 @@ turn p1 p2 gs isPlayer1 =
         
 shuffle' :: [Int] -> [a] -> [a]
 shuffle' _ []          = []
+shuffle' _ [x]         = [x]
 shuffle' (i:is) (x:xs) = let s      = shuffle' is xs
-                             (l, r) = splitAt (if null xs then 0 else i `mod` length xs) s 
+                             (l, r) = splitAt (i `mod` length xs) s 
                          in l ++ (x:r)
                          
 shuffle :: StdGen -> [a] -> [a]
