@@ -1,7 +1,8 @@
 module AI where
 
-import Data.List ((\\), maximumBy, minimumBy)
+import Data.List ((\\), maximumBy)
 import Data.Function (on)
+import qualified Data.Map as M
 
 import GameData
 
@@ -117,40 +118,95 @@ evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ _ _) (Defend cards) 
 -- Maximizes our score given that the other player will try and minimize our score.
 -- TODO: what does "our score" mean? do we maximize the probability of wins?
 -- TODO: terminates sometimes, but currently has been working for 5 mins, is there a cycle in the graph?
--- TODO: the code for all 4 cases is very similar, merge?
-miniMaxEvalOffense :: GameState -> Bool -> OffenseAction -> Int
-miniMaxEvalOffense gs isPlayer1 a@(Attack _) =
-    let newState  = applyOffenseAction gs isPlayer1 a
-        plState   = preparePVS newState (not isPlayer1)
-        oppAction = miniMaxDefense newState (not isPlayer1) (generateDefenseActions plState)
-    in miniMaxEvalDefense newState (not isPlayer1) oppAction
-miniMaxEvalOffense gs isPlayer1 FinishAttack =
-    let newState  = applyOffenseAction gs isPlayer1 FinishAttack
-        plState   = preparePVS newState (not isPlayer1)
-        oppAction = miniMaxOffense newState (not isPlayer1) (generateOffenseActions plState)
-     in if gameOver newState then
-        if null (player1Hand newState) then 1 else 0
-        else miniMaxEvalOffense newState (not isPlayer1) oppAction
+-- TODO: the code is an abomination.
+miniMaxEvalOffense :: (GameState, Bool, OffenseAction)
+    -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
+    -> (Int, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
+miniMaxEvalOffense node@(gs, isPlayer1, FinishAttack) c@(ocache, dcache)
+  | M.member node ocache = (ocache M.! node, ocache, dcache)
+  | gameOver newState =
+    if null (player1Hand newState) then (1, M.insert node 1 ocache, dcache) else
+      (0, M.insert node 0 ocache, dcache)
+  | otherwise =
+    miniMaxEvalOffense (newState, not isPlayer1, oppAction) (nocache, ndcache)
+  where newState = applyOffenseAction gs isPlayer1 FinishAttack
+        plState = preparePVS newState (not isPlayer1)
+        (oppAction, nocache, ndcache)
+          = miniMaxOffenseChoice newState (not isPlayer1)
+              (generateOffenseActions plState) c
+miniMaxEvalOffense node@(gs, isPlayer1, a@(Attack _)) c@(ocache, dcache)
+  | M.member node ocache = (ocache M.! node, ocache, dcache)
+  | gameOver newState =
+    if null (player1Hand newState) then (1, M.insert node 1 ocache, dcache) else
+      (0, M.insert node 0 ocache, dcache)
+  | otherwise =
+    miniMaxEvalOffense (newState, not isPlayer1, oppAction) (nocache, ndcache)
+  where newState = applyOffenseAction gs isPlayer1 a
+        plState = preparePVS newState (not isPlayer1)
+        (oppAction, nocache, ndcache)
+          = miniMaxOffenseChoice newState (not isPlayer1)
+              (generateOffenseActions plState) c
 
-miniMaxEvalDefense :: GameState -> Bool -> DefenseAction -> Int
-miniMaxEvalDefense gs isPlayer1 d@(Defend _) =
-    let newState  = applyDefenseAction gs isPlayer1 d
-        plState   = preparePVS newState (not isPlayer1)
-        oppAction = miniMaxOffense newState (not isPlayer1) (generateOffenseActions plState)
-    in miniMaxEvalOffense newState (not isPlayer1) oppAction
-miniMaxEvalDefense gs isPlayer1 GiveUp =
-    let newState  = applyDefenseAction gs isPlayer1 GiveUp
-        plState   = preparePVS newState (not isPlayer1)
-        oppAction = miniMaxOffense newState (not isPlayer1) (generateOffenseActions plState)
-    in if gameOver newState then 
-        if null (player1Hand newState) then 1 else 0
-        else miniMaxEvalOffense newState (not isPlayer1) oppAction
+miniMaxEvalDefense :: (GameState, Bool, DefenseAction)
+    -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
+    -> (Int, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
+miniMaxEvalDefense node@(gs, isPlayer1, GiveUp) c@(ocache, dcache)
+  | M.member node dcache = (dcache M.! node, ocache, dcache)
+  | gameOver newState =
+    if null (player1Hand newState) then (1, ocache, M.insert node 1 dcache) else
+      (0, ocache, M.insert node 0 dcache)
+  | otherwise =
+    miniMaxEvalOffense (newState, not isPlayer1, oppAction) (nocache, ndcache)
+  where newState = applyDefenseAction gs isPlayer1 GiveUp
+        plState = preparePVS newState (not isPlayer1)
+        (oppAction, nocache, ndcache)
+          = miniMaxOffenseChoice newState (not isPlayer1)
+              (generateOffenseActions plState) c
+miniMaxEvalDefense node@(gs, isPlayer1, d@(Defend _)) c@(ocache, dcache)
+  | M.member node dcache = (dcache M.! node, ocache, dcache)
+  | gameOver newState =
+    if null (player1Hand newState) then (1, ocache, M.insert node 1 dcache) else
+      (0, ocache, M.insert node 0 dcache)
+  | otherwise =
+    miniMaxEvalOffense (newState, not isPlayer1, oppAction) (nocache, ndcache)
+  where newState = applyDefenseAction gs isPlayer1 d
+        plState = preparePVS newState (not isPlayer1)
+        (oppAction, nocache, ndcache)
+          = miniMaxOffenseChoice newState (not isPlayer1)
+              (generateOffenseActions plState) c
 
+miniMaxOffenseChoice :: GameState -> Bool -> [OffenseAction]
+    -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
+    -> (OffenseAction, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
+miniMaxOffenseChoice gs isPlayer1 actions caches =
+    let op = if isPlayer1 then (>) else (<) 
+        (best, _, (c1', c2')) =
+            foldl (\(a, v, c) b -> let (result, c1, c2) = miniMaxEvalOffense (gs, isPlayer1, b) c
+                  in (if op result v then (b, result, (c1, c2)) else (a, v, (c1, c2)))) 
+            (let (result, c1, c2) = miniMaxEvalOffense (gs, isPlayer1, head actions) caches
+                in (head actions, result, (c1, c2)))
+            (tail actions)
+    in (best, c1', c2')
+
+miniMaxDefenseChoice :: GameState -> Bool -> [DefenseAction]
+    -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
+    -> (DefenseAction, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
+miniMaxDefenseChoice gs isPlayer1 actions caches = 
+    let op = if isPlayer1 then (>) else (<) 
+        (best, _, (c1', c2')) =
+            foldl (\(a, v, c) b -> let (result, c1, c2) = miniMaxEvalDefense (gs, isPlayer1, b) c
+                  in (if op result v then (b, result, (c1, c2)) else (a, v, (c1, c2)))) 
+            (let (result, c1, c2) = miniMaxEvalDefense (gs, isPlayer1, head actions) caches
+                in (head actions, result, (c1, c2)))
+            (tail actions)
+    in (best, c1', c2')
+
+-- A nice wrapper for the gory minimax search
 miniMaxDefense :: GameState -> Bool -> [DefenseAction] -> DefenseAction
-miniMaxDefense gs isPlayer1 = (if isPlayer1 then maximumBy else minimumBy) (compare `on` miniMaxEvalDefense gs isPlayer1)
+miniMaxDefense gs isPlayer1 actions = (\(a, _, _) -> a) $ miniMaxDefenseChoice gs isPlayer1 actions (M.empty, M.empty) 
 
 miniMaxOffense :: GameState -> Bool -> [OffenseAction] -> OffenseAction
-miniMaxOffense gs isPlayer1 = (if isPlayer1 then maximumBy else minimumBy) (compare `on` miniMaxEvalOffense gs isPlayer1)
+miniMaxOffense gs isPlayer1 actions =  (\(a, _, _) -> a) $ miniMaxOffenseChoice gs isPlayer1 actions (M.empty, M.empty) 
 
 -- Choosing an action for now is just about finding one with the maximum value.
 -- If, otherwise, we can reconstruct the whole game state, we are in the endgame and can use

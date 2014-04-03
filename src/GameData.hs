@@ -48,7 +48,7 @@ data GameState = GameState
         , remainingDeck :: [Card]
         , discardPile   :: [Card]
         , deskState     :: TransientState
-        } deriving Show
+        } deriving (Show, Ord)
 
 instance Eq GameState where
     (==) (GameState p1Hand1 takenByP11 p2Hand1 takenByP21 trump1 remain1 dp1 ds1) 
@@ -64,7 +64,7 @@ data TransientState = TransientState
         { inactiveAttack  :: [Card] -- Cards that have been defended against
         , inactiveDefense :: [Card] -- Cards that have defended against cards
         , activeAttack    :: [Card] -- Cards the player has yet to defend against
-        } deriving Show
+        } deriving (Show, Ord)
 
 instance Eq TransientState where
     (TransientState ina1 ind1 aa1) == (TransientState ina2 ind2 aa2) = all (uncurry ((==) `on` sort)) [(ina1, ina2), (ind1, ind2), (aa1, aa2)] 
@@ -99,11 +99,11 @@ preparePVS (GameState opHand koHand hand tHand trump deck discard ds) False =
 
 data OffenseAction = Attack [Card]
                    | FinishAttack
-                   deriving Show
+                   deriving (Show, Ord, Eq)
 
 data DefenseAction = Defend [(Card, Card)]
                    | GiveUp
-                   deriving Show
+                   deriving (Show, Ord, Eq)
 
 
 
