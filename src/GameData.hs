@@ -163,7 +163,24 @@ generateOffenseActions (PlayerVisibleState hand _ _ _ _ opHandSize _ ts)
         groupBy ((==) `on` cardValue) $ sortBy (compare `on` cardValue) hand -- group into equivalence classes on card values 
     | otherwise              = FinishAttack : (map Attack . filter (not . null) . subsequences $ filter (flip elem attackValues . cardValue) hand)  
     where attackValues = map cardValue $ allDeskCards ts
-   
+
+
+-- Game over if no cards remain in the deck and on the table and one of the players
+-- has no cards.
+gameOver :: GameState -> Bool
+gameOver (GameState p1 _ p2 _ _ [] _ (TransientState [] [] [])) = null p1 || null p2
+gameOver _ = False
+
+-- Simulates a player taking cards from the deck
+topUp :: GameState -> Bool -> GameState
+topUp gs@(GameState p1 _ _ _ _ deck _ _) True =
+    gs {player1Hand   = p1 ++ take number deck,
+        remainingDeck = drop number deck} 
+    where number = min (length deck) $ max (6 - length p1) 0
+topUp gs@(GameState _ _ p2 _ _ deck _ _) False =
+    gs {player2Hand   = p2 ++ take number deck,
+        remainingDeck = drop number deck} 
+    where number = min (length deck) $ max (6 - length p2) 0   
 
 -- A player can react to game state with defensive or offensive actions.
 -- The functions return monads in case the player is human-controlled.

@@ -1,6 +1,6 @@
 module AI where
 
-import Data.List ((\\), maximumBy)
+import Data.List ((\\), maximumBy, minimumBy)
 import Data.Function (on)
 
 import GameData
@@ -113,9 +113,54 @@ evaluateDefenseAction :: PlayerVisibleState -> DefenseAction -> Double
 evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ _ ts) GiveUp = futureHandValue gs (hand ++ allDeskCards ts)
 evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ _ _) (Defend cards) = futureHandValue gs (hand \\ map snd cards) 
 
+-- Performes a minimax search of the game tree when both opponents' hands are known.
+-- Maximizes our score given that the other player will try and minimize our score.
+-- TODO: what does "our score" mean? do we maximize the probability of wins?
+-- TODO: terminates sometimes, but currently has been working for 5 mins, is there a cycle in the graph?
+-- TODO: the code for all 4 cases is very similar, merge?
+miniMaxEvalOffense :: GameState -> Bool -> OffenseAction -> Int
+miniMaxEvalOffense gs isPlayer1 a@(Attack _) =
+    let newState  = applyOffenseAction gs isPlayer1 a
+        plState   = preparePVS newState (not isPlayer1)
+        oppAction = miniMaxDefense newState (not isPlayer1) (generateDefenseActions plState)
+    in miniMaxEvalDefense newState (not isPlayer1) oppAction
+miniMaxEvalOffense gs isPlayer1 FinishAttack =
+    let newState  = applyOffenseAction gs isPlayer1 FinishAttack
+        plState   = preparePVS newState (not isPlayer1)
+        oppAction = miniMaxOffense newState (not isPlayer1) (generateOffenseActions plState)
+     in if gameOver newState then
+        if null (player1Hand newState) then 1 else 0
+        else miniMaxEvalOffense newState (not isPlayer1) oppAction
+
+miniMaxEvalDefense :: GameState -> Bool -> DefenseAction -> Int
+miniMaxEvalDefense gs isPlayer1 d@(Defend _) =
+    let newState  = applyDefenseAction gs isPlayer1 d
+        plState   = preparePVS newState (not isPlayer1)
+        oppAction = miniMaxOffense newState (not isPlayer1) (generateOffenseActions plState)
+    in miniMaxEvalOffense newState (not isPlayer1) oppAction
+miniMaxEvalDefense gs isPlayer1 GiveUp =
+    let newState  = applyDefenseAction gs isPlayer1 GiveUp
+        plState   = preparePVS newState (not isPlayer1)
+        oppAction = miniMaxOffense newState (not isPlayer1) (generateOffenseActions plState)
+    in if gameOver newState then 
+        if null (player1Hand newState) then 1 else 0
+        else miniMaxEvalOffense newState (not isPlayer1) oppAction
+
+miniMaxDefense :: GameState -> Bool -> [DefenseAction] -> DefenseAction
+miniMaxDefense gs isPlayer1 = (if isPlayer1 then maximumBy else minimumBy) (compare `on` miniMaxEvalDefense gs isPlayer1)
+
+miniMaxOffense :: GameState -> Bool -> [OffenseAction] -> OffenseAction
+miniMaxOffense gs isPlayer1 = (if isPlayer1 then maximumBy else minimumBy) (compare `on` miniMaxEvalOffense gs isPlayer1)
+
 -- Choosing an action for now is just about finding one with the maximum value.
+-- If, otherwise, we can reconstruct the whole game state, we are in the endgame and can use
+-- minimax to determine what to do.
 chooseDefenseAction :: PlayerVisibleState -> [DefenseAction] -> DefenseAction
-chooseDefenseAction gs = maximumBy (compare `on` evaluateDefenseAction gs)
+chooseDefenseAction gs = case reconstructGS gs of 
+    Nothing  -> maximumBy (compare `on` evaluateDefenseAction gs)
+    Just ags -> miniMaxDefense ags True
 
 chooseOffenseAction :: PlayerVisibleState -> [OffenseAction] -> OffenseAction
-chooseOffenseAction gs = maximumBy (compare `on` evaluateOffenseAction gs)
+chooseOffenseAction gs = case reconstructGS gs of
+    Nothing  -> maximumBy (compare `on` evaluateOffenseAction gs)
+    Just ags -> miniMaxOffense ags True

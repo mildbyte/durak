@@ -18,7 +18,7 @@ outputDefense (Defend cs) = do
     putStrLn "The opponent: "
     forM_ cs (\(w, a) -> putStrLn $ " * Beats " ++ show w ++ " with " ++ show a)
 
-inputAction pvs@(PlayerVisibleState hand tHand _ trump _ _ rem (TransientState ina ind aa)) actions = do
+inputAction (PlayerVisibleState hand tHand _ trump _ _ rem (TransientState ina ind aa)) actions = do
     putStrLn $ "Your hand: " ++ show hand ++ " (from which the opponent knows " ++ show tHand ++ ")"
     putStrLn $ "Trump card:" ++ show trump
     putStrLn $ "Cards on desk: " ++ show (ina ++ ind)

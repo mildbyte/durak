@@ -2,24 +2,6 @@ module GameEngine where
 
 import GameData
 import System.Random (StdGen, randoms)
-import Data.List (delete)
-
--- Game over if no cards remain in the deck and on the table and one of the players
--- has no cards.
-gameOver :: GameState -> Bool
-gameOver (GameState p1 _ p2 _ _ [] _ (TransientState [] [] [])) = null p1 || null p2
-gameOver _ = False
-
--- Simulates a player taking cards from the deck
-topUp :: GameState -> Bool -> GameState
-topUp gs@(GameState p1 _ _ _ _ deck _ _) True =
-    gs {player1Hand   = p1 ++ take number deck,
-        remainingDeck = drop number deck} 
-    where number = min (length deck) $ max (6 - length p1) 0
-topUp gs@(GameState _ _ p2 _ _ deck _ _) False =
-    gs {player2Hand   = p2 ++ take number deck,
-        remainingDeck = drop number deck} 
-    where number = min (length deck) $ max (6 - length p2) 0
 
 -- Performs a turn in the game.
 -- The turn starts with an attack: the first player chooses an attack from the generated list of
