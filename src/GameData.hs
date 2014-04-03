@@ -1,13 +1,13 @@
 -- Structures for game data and manipulating it
 module GameData where
 
-import Data.List ((\\), nub, groupBy, subsequences, sortBy)
+import Data.List ((\\), nub, groupBy, subsequences, sortBy, sort)
 import Data.Function (on)
-data Suit = Hearts | Diamonds | Clubs | Spades deriving (Show, Eq)
+data Suit = Hearts | Diamonds | Clubs | Spades deriving (Show, Eq, Ord)
 data Card = Card 
         { cardValue :: Int
         , cardSuit  :: Suit
-        } deriving (Eq)
+        } deriving (Eq, Ord)
                 
 instance Show Card where
     show (Card value suit)
@@ -38,6 +38,7 @@ universe :: [Card]
 universe = [Card v s | v <- [6..14], s <- [Hearts, Diamonds, Clubs, Spades]]
 
 -- Engine-visible game state
+-- TODO: lists of cards have set semantics, move to sets?
 data GameState = GameState 
         { player1Hand   :: [Card]
         , takenByP1     :: [Card] -- Cards in P1's hand that they took when giving up defense
@@ -47,14 +48,26 @@ data GameState = GameState
         , remainingDeck :: [Card]
         , discardPile   :: [Card]
         , deskState     :: TransientState
-        } deriving (Show, Eq)
+        } deriving Show
+
+instance Eq GameState where
+    (==) (GameState p1Hand1 takenByP11 p2Hand1 takenByP21 trump1 remain1 dp1 ds1) 
+         (GameState p1Hand2 takenByP12 p2Hand2 takenByP22 trump2 remain2 dp2 ds2) =
+         all (uncurry ((==) `on` sort)) [(p1Hand1, p1Hand2), (takenByP11, takenByP12), 
+                                         (p2Hand1, p2Hand2), (takenByP21, takenByP22),
+                                         (remain1, remain2), (dp1, dp2)]
+         && trump1 == trump2 && ds1 == ds2 
+         
 
 -- State during an attack or defense
 data TransientState = TransientState
         { inactiveAttack  :: [Card] -- Cards that have been defended against
         , inactiveDefense :: [Card] -- Cards that have defended against cards
         , activeAttack    :: [Card] -- Cards the player has yet to defend against
-        } deriving (Show, Eq)
+        } deriving Show
+
+instance Eq TransientState where
+    (TransientState ina1 ind1 aa1) == (TransientState ina2 ind2 aa2) = all (uncurry ((==) `on` sort)) [(ina1, ina2), (ind1, ind2), (aa1, aa2)] 
 
 emptyTransientState :: TransientState
 emptyTransientState = TransientState [] [] []
@@ -68,6 +81,7 @@ allDeskCards (TransientState ia ind aa) = ia ++ ind ++ aa
 -- to take when they abandoned their defense.
 data PlayerVisibleState = PlayerVisibleState
         { playerHand        :: [Card]
+        , playerTakenHand   :: [Card] -- Cards the player took when he gave up
         , seenDiscardPile   :: [Card]
         , trumpCard         :: Card
         , knownOpponentHand :: [Card]
@@ -78,10 +92,10 @@ data PlayerVisibleState = PlayerVisibleState
 
 -- Constructs the state that will be visible by the player, hiding information
 preparePVS :: GameState -> Bool -> PlayerVisibleState
-preparePVS (GameState hand _ opHand koHand trump deck discard ds) True =
-    PlayerVisibleState hand discard trump koHand (length opHand) (length deck) ds
-preparePVS (GameState opHand koHand hand _ trump deck discard ds) False =
-    PlayerVisibleState hand discard trump koHand (length opHand) (length deck) ds
+preparePVS (GameState hand tHand opHand koHand trump deck discard ds) True =
+    PlayerVisibleState hand tHand discard trump koHand (length opHand) (length deck) ds
+preparePVS (GameState opHand koHand hand tHand trump deck discard ds) False =
+    PlayerVisibleState hand tHand discard trump koHand (length opHand) (length deck) ds
 
 data OffenseAction = Attack [Card]
                    | FinishAttack
@@ -131,7 +145,7 @@ applyDefenseAction gs@(GameState _ _ hand koHand _ _ _ ts) False GiveUp =
 -- take the Cartesian product of these lists and only keep the lists that represent a set.
 -- Each of these list is a way to beat the current cards.
 generateDefenseActions :: PlayerVisibleState -> [DefenseAction]
-generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ _ ts) =
+generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ _ _ ts) =
     GiveUp : map (Defend . zip (activeAttack ts)) validBeatings
     where cardsBeatC ac = filter (\pc -> beats (cardSuit $ trumpCard gs) pc ac) $ playerHand gs
           beatingCards  = map cardsBeatC $ activeAttack ts 
@@ -143,7 +157,7 @@ generateDefenseActions gs@(PlayerVisibleState _ _ _ _ _ _ ts) =
 -- if we are continuing the attack, take all subsets of the set of cards we have whose values
 -- are already on the desk.
 generateOffenseActions :: PlayerVisibleState -> [OffenseAction]
-generateOffenseActions (PlayerVisibleState hand _ _ _ opHandSize _ ts)
+generateOffenseActions (PlayerVisibleState hand _ _ _ _ opHandSize _ ts)
     | opHandSize == 0        = [FinishAttack]
     | null $ allDeskCards ts = map Attack  . filter ((>=) opHandSize . length) . filter (not . null) . concatMap subsequences $ 
         groupBy ((==) `on` cardValue) $ sortBy (compare `on` cardValue) hand -- group into equivalence classes on card values 

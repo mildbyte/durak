@@ -14,12 +14,19 @@ aiPlayer = Player daWrapper oaWrapper nothing nothing
 oaWrapper gs actions = return $ chooseOffenseAction gs actions
 daWrapper gs actions = return $ chooseDefenseAction gs actions
 
+-- Reconstructs the complete game state at the endgame when the opponent's cards are known.
+reconstructGS :: PlayerVisibleState -> Maybe GameState
+reconstructGS pvs@(PlayerVisibleState myHand myTakenCards discard trump koHand _ 0 ts) =
+    Just $ GameState myHand myTakenCards opponentHand koHand trump [] discard ts
+    where opponentHand = unseenCards pvs ++ koHand 
+reconstructGS _ = Nothing
+
 -- Returns a list of cards that we haven't yet seen in the game
 -- = universe of cards
 -- - our hand - discard pile - face-up trump card - cards we know the opponent has - transient state
 -- TODO: trump card sometimes is in the deck, sometimes not
 unseenCards :: PlayerVisibleState -> [Card]
-unseenCards (PlayerVisibleState p d t c _ _ ts) =
+unseenCards (PlayerVisibleState p _ d t c _ _ ts) =
     universe \\ (t : p ++ d ++ c ++ allDeskCards ts)
 
 -- Counts the expected value of the fraction of cards
@@ -28,7 +35,7 @@ unseenCards (PlayerVisibleState p d t c _ _ ts) =
 -- we know the opponent has.
 cardFraction :: (Card -> Bool) -> PlayerVisibleState -> Double
 cardFraction p
-  state@(PlayerVisibleState _ _ _ knownCards opHandSize _ _)
+  state@(PlayerVisibleState _ _ _ _ knownCards opHandSize _ _)
   | knownLength == 0 = unknownEstimate
   | null possibleCards = knownFraction
   | otherwise =
@@ -103,8 +110,8 @@ evaluateOffenseAction gs (Attack cards) = futureHandValue gs $ playerHand gs \\ 
 -- Evaluates a defense action by considering our hand value if we give up and take cards
 -- or sacrifice our cards to defend against the attacking cards.
 evaluateDefenseAction :: PlayerVisibleState -> DefenseAction -> Double
-evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ ts) GiveUp = futureHandValue gs (hand ++ allDeskCards ts)
-evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ _) (Defend cards) = futureHandValue gs (hand \\ map snd cards) 
+evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ _ ts) GiveUp = futureHandValue gs (hand ++ allDeskCards ts)
+evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ _ _) (Defend cards) = futureHandValue gs (hand \\ map snd cards) 
 
 -- Choosing an action for now is just about finding one with the maximum value.
 chooseDefenseAction :: PlayerVisibleState -> [DefenseAction] -> DefenseAction

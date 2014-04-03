@@ -8,6 +8,7 @@ import AI
 import Data.List (delete, sort)
 import GameEngine
 import System.Random (mkStdGen)
+import Data.Maybe (isJust, fromJust)
 
 instance Arbitrary Card where
     arbitrary = elements universe
@@ -21,7 +22,7 @@ instance Arbitrary GameState where
         p1KnownHandSize <- choose (0, 6)
         p2HandSize <- choose (6, 10)
         p2KnownHandSize <- choose (0, 6)
-        discardPileSize <- choose (0, 35 - (p1HandSize + p2HandSize)) 
+        discardPileSize <- choose (0, 36 - (p1HandSize + p2HandSize)) 
          
         deck <- testShuffle universe
         
@@ -32,7 +33,7 @@ instance Arbitrary GameState where
         let discard = take discardPileSize $ drop (p1HandSize + p2HandSize) deck
         let remain  = drop (p1HandSize + p2HandSize + discardPileSize) deck        
          
-        return $ GameState p1Hand p1Known p2Hand p2Known (last remain) remain discard emptyTransientState
+        return $ GameState p1Hand p1Known p2Hand p2Known (if null remain then head discard else last remain) remain discard emptyTransientState
 
 instance Arbitrary PlayerVisibleState where
     arbitrary = do
@@ -57,7 +58,7 @@ prop_values gs c1@(Card v1 s1) c2@(Card v2 s2) =
                             && offenseValue c1 gs >= offenseValue c2 gs
                             
 -- If a card beats another card, it will have at least the same offense and defense values                           
-prop_beatval gs@(PlayerVisibleState _ _ (Card _ trump) _ _ _ _) c1 c2 =
+prop_beatval gs@(PlayerVisibleState _ _ _ (Card _ trump) _ _ _ _) c1 c2 =
     beats trump c1 c2 ==> defenseValue c1 gs >= defenseValue c2 gs
                        && offenseValue c1 gs >= offenseValue c2 gs
 
@@ -71,6 +72,11 @@ prop_fhvsanity gs = hVal <= 1.0 && hVal >= 0.0
 -- If a card has a larger defense score, removing it from the hand will result in a weaker card.
 prop_fhv gs = (length (playerHand gs) > 2 && defenseValue (head (playerHand gs)) gs > defenseValue (playerHand gs !! 1) gs)
     ==> futureHandValue gs (delete (head (playerHand gs)) $ playerHand gs) <= futureHandValue gs (delete (playerHand gs !! 1) $ playerHand gs)
+    
+-- If the AI can reconstruct the game state from the obfuscated state, it corresponds to the original state.
+prop_reconstruct gs = isJust gs2 ==> gs == fromJust gs2
+    where gs2 = reconstructGS $ preparePVS gs True 
+
 
 
 runTests :: IO Bool
