@@ -123,56 +123,60 @@ miniMaxEvalOffense :: (GameState, Bool, OffenseAction)
     -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
     -> (Int, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
 miniMaxEvalOffense node@(gs, isPlayer1, FinishAttack) c@(ocache, dcache)
-  | M.member node ocache = (ocache M.! node, ocache, dcache)
   | gameOver newState =
     if null (player1Hand newState) then (1, M.insert node 1 ocache, dcache) else
       (0, M.insert node 0 ocache, dcache)
+  | M.member node ocache = (ocache M.! node, ocache, dcache)
   | otherwise =
-    miniMaxEvalOffense (newState, not isPlayer1, oppAction) (nocache, ndcache)
+    let (result, nocache', ndcache') = miniMaxEvalOffense (canonicalForm newState, not isPlayer1, oppAction) (nocache, ndcache)
+    in (result, M.insert node result nocache', ndcache')
   where newState = applyOffenseAction gs isPlayer1 FinishAttack
         plState = preparePVS newState (not isPlayer1)
         (oppAction, nocache, ndcache)
-          = miniMaxOffenseChoice newState (not isPlayer1)
+          = miniMaxOffenseChoice (canonicalForm newState) (not isPlayer1)
               (generateOffenseActions plState) c
 miniMaxEvalOffense node@(gs, isPlayer1, a@(Attack _)) c@(ocache, dcache)
-  | M.member node ocache = (ocache M.! node, ocache, dcache)
   | gameOver newState =
     if null (player1Hand newState) then (1, M.insert node 1 ocache, dcache) else
       (0, M.insert node 0 ocache, dcache)
+  | M.member node ocache = (ocache M.! node, ocache, dcache)
   | otherwise =
-    miniMaxEvalOffense (newState, not isPlayer1, oppAction) (nocache, ndcache)
+    let (result, nocache', ndcache') = miniMaxEvalDefense (canonicalForm newState, not isPlayer1, oppAction) (nocache, ndcache)
+    in (result, M.insert node result nocache', ndcache')
   where newState = applyOffenseAction gs isPlayer1 a
         plState = preparePVS newState (not isPlayer1)
         (oppAction, nocache, ndcache)
-          = miniMaxOffenseChoice newState (not isPlayer1)
-              (generateOffenseActions plState) c
+          = miniMaxDefenseChoice (canonicalForm newState) (not isPlayer1)
+              (generateDefenseActions plState) c
 
 miniMaxEvalDefense :: (GameState, Bool, DefenseAction)
     -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
     -> (Int, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
 miniMaxEvalDefense node@(gs, isPlayer1, GiveUp) c@(ocache, dcache)
-  | M.member node dcache = (dcache M.! node, ocache, dcache)
   | gameOver newState =
     if null (player1Hand newState) then (1, ocache, M.insert node 1 dcache) else
       (0, ocache, M.insert node 0 dcache)
+  | M.member node dcache = (dcache M.! node, ocache, dcache)
   | otherwise =
-    miniMaxEvalOffense (newState, not isPlayer1, oppAction) (nocache, ndcache)
+    let (result, nocache', ndcache') = miniMaxEvalOffense (canonicalForm newState, not isPlayer1, oppAction) (nocache, ndcache)
+    in (result, nocache', M.insert node result ndcache')
   where newState = applyDefenseAction gs isPlayer1 GiveUp
         plState = preparePVS newState (not isPlayer1)
         (oppAction, nocache, ndcache)
-          = miniMaxOffenseChoice newState (not isPlayer1)
+          = miniMaxOffenseChoice (canonicalForm newState) (not isPlayer1)
               (generateOffenseActions plState) c
 miniMaxEvalDefense node@(gs, isPlayer1, d@(Defend _)) c@(ocache, dcache)
-  | M.member node dcache = (dcache M.! node, ocache, dcache)
   | gameOver newState =
     if null (player1Hand newState) then (1, ocache, M.insert node 1 dcache) else
       (0, ocache, M.insert node 0 dcache)
+  | M.member node dcache = (dcache M.! node, ocache, dcache)
   | otherwise =
-    miniMaxEvalOffense (newState, not isPlayer1, oppAction) (nocache, ndcache)
+    let (result, nocache', ndcache') = miniMaxEvalOffense (canonicalForm newState, not isPlayer1, oppAction) (nocache, ndcache)
+    in (result, nocache', M.insert node result ndcache')
   where newState = applyDefenseAction gs isPlayer1 d
         plState = preparePVS newState (not isPlayer1)
         (oppAction, nocache, ndcache)
-          = miniMaxOffenseChoice newState (not isPlayer1)
+          = miniMaxOffenseChoice (canonicalForm newState) (not isPlayer1)
               (generateOffenseActions plState) c
 
 miniMaxOffenseChoice :: GameState -> Bool -> [OffenseAction]
@@ -191,12 +195,12 @@ miniMaxOffenseChoice gs isPlayer1 actions caches =
 miniMaxDefenseChoice :: GameState -> Bool -> [DefenseAction]
     -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
     -> (DefenseAction, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-miniMaxDefenseChoice gs isPlayer1 actions caches = 
+miniMaxDefenseChoice gs isPlayer1 actions caches =
     let op = if isPlayer1 then (>) else (<) 
         (best, _, (c1', c2')) =
-            foldl (\(a, v, c) b -> let (result, c1, c2) = miniMaxEvalDefense (gs, isPlayer1, b) c
+            foldl (\(a, v, c) b -> let (result, c1, c2) = miniMaxEvalDefense (canonicalForm gs, isPlayer1, b) c
                   in (if op result v then (b, result, (c1, c2)) else (a, v, (c1, c2)))) 
-            (let (result, c1, c2) = miniMaxEvalDefense (gs, isPlayer1, head actions) caches
+            (let (result, c1, c2) = miniMaxEvalDefense (canonicalForm gs, isPlayer1, head actions) caches
                 in (head actions, result, (c1, c2)))
             (tail actions)
     in (best, c1', c2')
@@ -206,7 +210,7 @@ miniMaxDefense :: GameState -> Bool -> [DefenseAction] -> DefenseAction
 miniMaxDefense gs isPlayer1 actions = (\(a, _, _) -> a) $ miniMaxDefenseChoice gs isPlayer1 actions (M.empty, M.empty) 
 
 miniMaxOffense :: GameState -> Bool -> [OffenseAction] -> OffenseAction
-miniMaxOffense gs isPlayer1 actions =  (\(a, _, _) -> a) $ miniMaxOffenseChoice gs isPlayer1 actions (M.empty, M.empty) 
+miniMaxOffense gs isPlayer1 actions = (\(a, _, _) -> a) $ miniMaxOffenseChoice gs isPlayer1 actions (M.empty, M.empty) 
 
 -- Choosing an action for now is just about finding one with the maximum value.
 -- If, otherwise, we can reconstruct the whole game state, we are in the endgame and can use

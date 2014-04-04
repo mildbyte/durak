@@ -50,6 +50,10 @@ data GameState = GameState
         , deskState     :: TransientState
         } deriving (Show, Ord)
 
+canonicalForm :: GameState -> GameState
+canonicalForm (GameState p1h p1t p2h p2t trump remD dp (TransientState ina ind aa)) = 
+    GameState (sort p1h) (sort p1t) (sort p2h) (sort p2t) trump (sort remD) (sort dp) (TransientState (sort ina) (sort ind) (sort aa))
+
 instance Eq GameState where
     (==) (GameState p1Hand1 takenByP11 p2Hand1 takenByP21 trump1 remain1 dp1 ds1) 
          (GameState p1Hand2 takenByP12 p2Hand2 takenByP22 trump2 remain2 dp2 ds2) =
