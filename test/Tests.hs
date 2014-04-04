@@ -72,12 +72,6 @@ prop_fhvsanity gs = hVal <= 1.0 && hVal >= 0.0
 -- If a card has a larger defense score, removing it from the hand will result in a weaker card.
 prop_fhv gs = (length (playerHand gs) > 2 && defenseValue (head (playerHand gs)) gs > defenseValue (playerHand gs !! 1) gs)
     ==> futureHandValue gs (delete (head (playerHand gs)) $ playerHand gs) <= futureHandValue gs (delete (playerHand gs !! 1) $ playerHand gs)
-    
--- If the AI can reconstruct the game state from the obfuscated state, it corresponds to the original state.
-prop_reconstruct gs = isJust gs2 ==> gs == fromJust gs2
-    where gs2 = reconstructGS $ preparePVS gs True 
-
-
 
 runTests :: IO Bool
 runTests = $quickCheckAll

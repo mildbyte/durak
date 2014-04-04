@@ -1,8 +1,7 @@
 module AI where
 
-import Data.List ((\\), maximumBy)
+import Data.List ((\\), maximumBy, nub, groupBy, sortBy, subsequences)
 import Data.Function (on)
-import qualified Data.Map as M
 
 import GameData
 
@@ -15,12 +14,14 @@ aiPlayer = Player daWrapper oaWrapper nothing nothing
 oaWrapper gs actions = return $ chooseOffenseAction gs actions
 daWrapper gs actions = return $ chooseDefenseAction gs actions
 
--- Reconstructs the complete game state at the endgame when the opponent's cards are known.
-reconstructGS :: PlayerVisibleState -> Maybe GameState
-reconstructGS pvs@(PlayerVisibleState myHand myTakenCards discard trump koHand _ 0 ts) =
-    Just $ GameState myHand myTakenCards opponentHand koHand trump [] discard ts
+-- Constructs a minimax search node at the endgame when the opponent's hand is known.
+-- NB: the second boolean parameter (attack/defense) must be changed accordingly when
+-- passing the node to the algorithm.
+constructSN :: PlayerVisibleState -> Maybe SearchNode
+constructSN pvs@(PlayerVisibleState myHand _ _ trump koHand _ 0 ts) =
+    Just $ SearchNode myHand opponentHand trump True False ts
     where opponentHand = unseenCards pvs ++ koHand 
-reconstructGS _ = Nothing
+constructSN _ = Nothing
 
 -- Returns a list of cards that we haven't yet seen in the game
 -- = universe of cards
@@ -114,113 +115,86 @@ evaluateDefenseAction :: PlayerVisibleState -> DefenseAction -> Double
 evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ _ ts) GiveUp = futureHandValue gs (hand ++ allDeskCards ts)
 evaluateDefenseAction gs@(PlayerVisibleState hand _ _ _ _ _ _ _) (Defend cards) = futureHandValue gs (hand \\ map snd cards) 
 
--- Performes a minimax search of the game tree when both opponents' hands are known.
--- Maximizes our score given that the other player will try and minimize our score.
--- TODO: what does "our score" mean? do we maximize the probability of wins?
--- TODO: terminates sometimes, but currently has been working for 5 mins, is there a cycle in the graph?
--- TODO: the code is an abomination.
-miniMaxEvalOffense :: (GameState, Bool, OffenseAction)
-    -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-    -> (Int, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-miniMaxEvalOffense node@(gs, isPlayer1, FinishAttack) c@(ocache, dcache)
-  | gameOver newState =
-    if null (player1Hand newState) then (1, M.insert node 1 ocache, dcache) else
-      (0, M.insert node 0 ocache, dcache)
-  | M.member node ocache = (ocache M.! node, ocache, dcache)
-  | otherwise =
-    let (result, nocache', ndcache') = miniMaxEvalOffense (canonicalForm newState, not isPlayer1, oppAction) (nocache, ndcache)
-    in (result, M.insert node result nocache', ndcache')
-  where newState = applyOffenseAction gs isPlayer1 FinishAttack
-        plState = preparePVS newState (not isPlayer1)
-        (oppAction, nocache, ndcache)
-          = miniMaxOffenseChoice (canonicalForm newState) (not isPlayer1)
-              (generateOffenseActions plState) c
-miniMaxEvalOffense node@(gs, isPlayer1, a@(Attack _)) c@(ocache, dcache)
-  | gameOver newState =
-    if null (player1Hand newState) then (1, M.insert node 1 ocache, dcache) else
-      (0, M.insert node 0 ocache, dcache)
-  | M.member node ocache = (ocache M.! node, ocache, dcache)
-  | otherwise =
-    let (result, nocache', ndcache') = miniMaxEvalDefense (canonicalForm newState, not isPlayer1, oppAction) (nocache, ndcache)
-    in (result, M.insert node result nocache', ndcache')
-  where newState = applyOffenseAction gs isPlayer1 a
-        plState = preparePVS newState (not isPlayer1)
-        (oppAction, nocache, ndcache)
-          = miniMaxDefenseChoice (canonicalForm newState) (not isPlayer1)
-              (generateDefenseActions plState) c
+-- Minimax search node. Similar to the GameState but without unneeded information.
+data SearchNode = SearchNode { p1Hand    :: [Card]
+                             , p2Hand    :: [Card]
+                             , trump     :: Card
+                             , isPlayer1 :: Bool
+                             , isAttack  :: Bool
+                             , transient :: TransientState }
 
-miniMaxEvalDefense :: (GameState, Bool, DefenseAction)
-    -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-    -> (Int, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-miniMaxEvalDefense node@(gs, isPlayer1, GiveUp) c@(ocache, dcache)
-  | gameOver newState =
-    if null (player1Hand newState) then (1, ocache, M.insert node 1 dcache) else
-      (0, ocache, M.insert node 0 dcache)
-  | M.member node dcache = (dcache M.! node, ocache, dcache)
-  | otherwise =
-    let (result, nocache', ndcache') = miniMaxEvalOffense (canonicalForm newState, not isPlayer1, oppAction) (nocache, ndcache)
-    in (result, nocache', M.insert node result ndcache')
-  where newState = applyDefenseAction gs isPlayer1 GiveUp
-        plState = preparePVS newState (not isPlayer1)
-        (oppAction, nocache, ndcache)
-          = miniMaxOffenseChoice (canonicalForm newState) (not isPlayer1)
-              (generateOffenseActions plState) c
-miniMaxEvalDefense node@(gs, isPlayer1, d@(Defend _)) c@(ocache, dcache)
-  | gameOver newState =
-    if null (player1Hand newState) then (1, ocache, M.insert node 1 dcache) else
-      (0, ocache, M.insert node 0 dcache)
-  | M.member node dcache = (dcache M.! node, ocache, dcache)
-  | otherwise =
-    let (result, nocache', ndcache') = miniMaxEvalOffense (canonicalForm newState, not isPlayer1, oppAction) (nocache, ndcache)
-    in (result, nocache', M.insert node result ndcache')
-  where newState = applyDefenseAction gs isPlayer1 d
-        plState = preparePVS newState (not isPlayer1)
-        (oppAction, nocache, ndcache)
-          = miniMaxOffenseChoice (canonicalForm newState) (not isPlayer1)
-              (generateOffenseActions plState) c
+myHand :: SearchNode -> [Card]
+myHand (SearchNode h _ _ True _ _) = h
+myHand (SearchNode _ h _ False _ _) = h
 
-miniMaxOffenseChoice :: GameState -> Bool -> [OffenseAction]
-    -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-    -> (OffenseAction, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-miniMaxOffenseChoice gs isPlayer1 actions caches =
-    let op = if isPlayer1 then (>) else (<) 
-        (best, _, (c1', c2')) =
-            foldl (\(a, v, c) b -> let (result, c1, c2) = miniMaxEvalOffense (gs, isPlayer1, b) c
-                  in (if op result v then (b, result, (c1, c2)) else (a, v, (c1, c2)))) 
-            (let (result, c1, c2) = miniMaxEvalOffense (gs, isPlayer1, head actions) caches
-                in (head actions, result, (c1, c2)))
-            (tail actions)
-    in (best, c1', c2')
+oppHand :: SearchNode -> [Card]
+oppHand (SearchNode h _ _ False _ _) = h
+oppHand (SearchNode _ h _ True _ _) = h
 
-miniMaxDefenseChoice :: GameState -> Bool -> [DefenseAction]
-    -> (M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-    -> (DefenseAction, M.Map (GameState, Bool, OffenseAction) Int, M.Map (GameState, Bool, DefenseAction) Int)
-miniMaxDefenseChoice gs isPlayer1 actions caches =
-    let op = if isPlayer1 then (>) else (<) 
-        (best, _, (c1', c2')) =
-            foldl (\(a, v, c) b -> let (result, c1, c2) = miniMaxEvalDefense (canonicalForm gs, isPlayer1, b) c
-                  in (if op result v then (b, result, (c1, c2)) else (a, v, (c1, c2)))) 
-            (let (result, c1, c2) = miniMaxEvalDefense (canonicalForm gs, isPlayer1, head actions) caches
-                in (head actions, result, (c1, c2)))
-            (tail actions)
-    in (best, c1', c2')
+--Same as in GameEngine, see that for documentation
+generateAttacks :: SearchNode -> [OffenseAction]
+generateAttacks sn@(SearchNode _ _ _ _ _ ts)
+    | null $ oppHand sn      = [FinishAttack]
+    | null $ allDeskCards ts = map Attack  . filter ((>=) (length $ oppHand sn) . length) . filter (not . null) . concatMap subsequences $ 
+        groupBy ((==) `on` cardValue) $ sortBy (compare `on` cardValue) hand -- group into equivalence classes on card values 
+    | otherwise              = FinishAttack : (map Attack . filter (not . null) . subsequences $ filter (flip elem attackValues . cardValue) hand)  
+    where attackValues = map cardValue $ allDeskCards ts
+          hand         = myHand sn
 
--- A nice wrapper for the gory minimax search
-miniMaxDefense :: GameState -> Bool -> [DefenseAction] -> DefenseAction
-miniMaxDefense gs isPlayer1 actions = (\(a, _, _) -> a) $ miniMaxDefenseChoice gs isPlayer1 actions (M.empty, M.empty) 
+generateDefenses :: SearchNode -> [DefenseAction]
+generateDefenses sn@(SearchNode _ _ tr _ _ ts) = 
+    GiveUp : map (Defend . zip (activeAttack ts)) validBeatings
+    where cardsBeatC ac = filter (\pc -> beats (cardSuit tr) pc ac) $ myHand sn 
+          beatingCards  = map cardsBeatC $ activeAttack ts 
+          validBeatings = filter (\xs -> nub xs == xs) $ sequence beatingCards
 
-miniMaxOffense :: GameState -> Bool -> [OffenseAction] -> OffenseAction
-miniMaxOffense gs isPlayer1 actions = (\(a, _, _) -> a) $ miniMaxOffenseChoice gs isPlayer1 actions (M.empty, M.empty) 
+applyAttack :: SearchNode -> OffenseAction -> SearchNode
+applyAttack sn FinishAttack =
+    sn {transient = emptyTransientState, isPlayer1 = not (isPlayer1 sn), isAttack = True}
+applyAttack sn@(SearchNode p1h _ _ True _ ts) (Attack cards) =
+    sn {p1Hand = p1h \\ cards, isPlayer1 = False, isAttack = False, transient = ts { activeAttack = activeAttack ts ++ cards}}
+applyAttack sn@(SearchNode _ p2h _ False _ ts) (Attack cards) =
+    sn {p2Hand = p2h \\ cards, isPlayer1 = True, isAttack = False, transient = ts { activeAttack = activeAttack ts ++ cards}}
+     
+applyDefense :: SearchNode -> DefenseAction -> SearchNode
+applyDefense sn@(SearchNode p1h _ _ True _ ts@(TransientState ia ind aa)) (Defend cards) =
+    sn {p1Hand = p1h \\ with, isPlayer1 = False, isAttack = True,
+        transient = ts {inactiveAttack  = against ++ ia,
+                       activeAttack    = aa \\ against,
+                       inactiveDefense = ind ++ with}}
+    where against = map fst cards
+          with    = map snd cards
+applyDefense sn@(SearchNode p2h _ _ False _ ts@(TransientState ia ind aa)) (Defend cards) =
+    sn {p2Hand = p2h \\ with, isPlayer1 = True, isAttack = True,
+        transient = ts {inactiveAttack  = against ++ ia,
+                       activeAttack    = aa \\ against,
+                       inactiveDefense = ind ++ with}}
+    where against = map fst cards
+          with    = map snd cards
+ 
+applyDefense sn@(SearchNode p1h _ _ True _ ts) GiveUp =
+    sn {p1Hand = p1h ++ allDeskCards ts, isPlayer1 = False, isAttack = True, transient = emptyTransientState} 
+applyDefense sn@(SearchNode _ p2h _ False _ ts) GiveUp =
+    sn {p2Hand = p2h ++ allDeskCards ts, isPlayer1 = True, isAttack = True, transient = emptyTransientState}
+    
+    
+evaluateNode :: SearchNode -> Int
+evaluateNode sn@(SearchNode _ _ _ isP1 isAtt _) =
+    (if isP1 then maximum else minimum) $ map evaluateNode nextNodes
+    where nextNodes = if isAtt then map (applyAttack sn) $ generateAttacks sn
+                               else map (applyDefense sn) $ generateDefenses sn
+
+
 
 -- Choosing an action for now is just about finding one with the maximum value.
 -- If, otherwise, we can reconstruct the whole game state, we are in the endgame and can use
 -- minimax to determine what to do.
 chooseDefenseAction :: PlayerVisibleState -> [DefenseAction] -> DefenseAction
-chooseDefenseAction gs = case reconstructGS gs of 
-    Nothing  -> maximumBy (compare `on` evaluateDefenseAction gs)
-    Just ags -> miniMaxDefense ags True
+chooseDefenseAction gs = case constructSN gs of 
+    Nothing   -> maximumBy (compare `on` evaluateDefenseAction gs)
+    Just node -> maximumBy (compare `on` (evaluateNode . applyDefense node {isAttack = False}))
 
 chooseOffenseAction :: PlayerVisibleState -> [OffenseAction] -> OffenseAction
-chooseOffenseAction gs = case reconstructGS gs of
-    Nothing  -> maximumBy (compare `on` evaluateOffenseAction gs)
-    Just ags -> miniMaxOffense ags True
+chooseOffenseAction gs = case constructSN gs of
+    Nothing   -> maximumBy (compare `on` evaluateOffenseAction gs)
+    Just node -> maximumBy (compare `on` (evaluateNode . applyAttack node {isAttack = True}))
