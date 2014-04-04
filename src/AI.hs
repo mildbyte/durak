@@ -179,10 +179,12 @@ applyDefense sn@(SearchNode _ p2h _ False _ ts) GiveUp =
     
     
 evaluateNode :: SearchNode -> Int
-evaluateNode sn@(SearchNode _ _ _ isP1 isAtt _) =
-    (if isP1 then maximum else minimum) $ map evaluateNode nextNodes
-    where nextNodes = if isAtt then map (applyAttack sn) $ generateAttacks sn
-                               else map (applyDefense sn) $ generateDefenses sn
+evaluateNode sn@(SearchNode p1h p2h _ isP1 isAtt _)
+    | null p1h = 1
+    | null p2h = -1
+    | otherwise = (if isP1 then maximum else minimum) $ map evaluateNode nextNodes
+        where nextNodes = if isAtt then map (applyAttack sn) $ generateAttacks sn
+                                   else map (applyDefense sn) $ generateDefenses sn
 
 
 
