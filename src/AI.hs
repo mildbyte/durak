@@ -124,7 +124,7 @@ data SearchNode = SearchNode { p1Hand    :: [Card]
                              , isPlayer1 :: Bool
                              , isAttack  :: Bool
                              , transient :: TransientState }
-                             deriving (Eq, Ord)
+                             deriving (Eq, Ord, Show)
 
 myHand :: SearchNode -> [Card]
 myHand (SearchNode h _ _ True _ _) = h
@@ -198,10 +198,12 @@ cachedExtremum cache op (startNode:nodes) =
               
 -- Evaluates a search state's score using a minimax search.
 -- TODO: out of memory errors, investigate
+-- TODO: a trace showed [(SearchNode {p1Hand = [8 Hearts], p2Hand = [8 Hearts]...], shouldn't happen
 evaluateNode :: Cache -> SearchNode -> (Cache, Int)
 evaluateNode cache sn@(SearchNode p1h p2h _ isP1 isAtt _)
-    | null p1h = (M.insert sn 1 cache, 1)
-    | null p2h = (M.insert sn (-1) cache, -1)
+    | null p1h = (cache, 1)  --Cheaper to test and return these than looking up in the cache
+    | null p2h = (cache, -1)
+    | M.member sn cache = (cache, cache M.! sn)
     | otherwise = (\(c, i, _) -> (M.insert sn i c,i)) $ cachedExtremum cache (if isP1 then (>) else (<)) nextNodes 
         where nextNodes = if isAtt then map (applyAttack sn) $ generateAttacks sn
                                    else map (applyDefense sn) $ generateDefenses sn
