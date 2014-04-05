@@ -1,6 +1,6 @@
 module AI where
 
-import Data.List ((\\), maximumBy, nub, groupBy, sortBy, subsequences)
+import Data.List ((\\), maximumBy, nub, groupBy, sortBy, subsequences, sort)
 import Data.Function (on)
 import qualified Data.Map as M
 
@@ -182,6 +182,20 @@ applyDefense sn@(SearchNode _ p2h _ False _ ts) GiveUp =
     
 type Cache = M.Map SearchNode Int
 
+canonicalForm :: SearchNode -> SearchNode
+canonicalForm sn@(SearchNode p1h p2h _ _ _ ts@(TransientState ina ind aa)) =
+    sn {p1Hand = sort p1h, p2Hand = sort p2h, 
+        transient = ts {inactiveAttack  = sort ina,
+                        inactiveDefense = sort ind,
+                        activeAttack    = sort aa}}                                       
+
+memberC ::  SearchNode -> Cache -> Bool
+memberC = M.member . canonicalForm
+lookupC :: SearchNode -> Cache -> Int
+lookupC = flip (M.!) . canonicalForm
+insertC :: SearchNode -> Int -> Cache -> Cache
+insertC = M.insert . canonicalForm
+
 -- Folds the cached evaluateNode over several SearchNodes, threading the cache through the computation.
 -- Returns the final cache, the best value and the node with the best value.
 -- op defines what we mean by best: (>) means greatest, (<) means smallest.
@@ -202,8 +216,8 @@ evaluateNode :: Cache -> SearchNode -> (Cache, Int)
 evaluateNode cache sn@(SearchNode p1h p2h _ isP1 isAtt _)
     | null p1h = (cache, 1)  --Cheaper to test and return these than looking up in the cache
     | null p2h = (cache, -1)
-    | M.member sn cache = (cache, cache M.! sn)
-    | otherwise = (\(c, i, _) -> (M.insert sn i c,i)) $ cachedExtremum cache (if isP1 then (>) else (<)) nextNodes 
+    | memberC sn cache = (cache, lookupC sn cache)
+    | otherwise = (\(c, i, _) -> (insertC sn i c,i)) $ cachedExtremum cache (if isP1 then (>) else (<)) nextNodes 
         where nextNodes = if isAtt then map (applyAttack sn) $ generateAttacks sn
                                    else map (applyDefense sn) $ generateDefenses sn
 
