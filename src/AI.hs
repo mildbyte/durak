@@ -2,8 +2,10 @@ module AI where
 
 import Data.List ((\\), maximumBy, nub, groupBy, sortBy, subsequences)
 import Data.Function (on)
+import qualified Data.Map as M
 
 import GameData
+import Data.Maybe (fromJust)
 
 nothing :: a -> IO()
 nothing _ = return()
@@ -122,6 +124,7 @@ data SearchNode = SearchNode { p1Hand    :: [Card]
                              , isPlayer1 :: Bool
                              , isAttack  :: Bool
                              , transient :: TransientState }
+                             deriving (Eq, Ord)
 
 myHand :: SearchNode -> [Card]
 myHand (SearchNode h _ _ True _ _) = h
@@ -177,12 +180,29 @@ applyDefense sn@(SearchNode p1h _ _ True _ ts) GiveUp =
 applyDefense sn@(SearchNode _ p2h _ False _ ts) GiveUp =
     sn {p2Hand = p2h ++ allDeskCards ts, isPlayer1 = True, isAttack = True, transient = emptyTransientState}
     
-    
-evaluateNode :: SearchNode -> Int
-evaluateNode sn@(SearchNode p1h p2h _ isP1 isAtt _)
-    | null p1h = 1
-    | null p2h = -1
-    | otherwise = (if isP1 then maximum else minimum) $ map evaluateNode nextNodes
+type Cache = M.Map SearchNode Int
+
+-- Folds the cached evaluateNode over several SearchNodes, threading the cache through the computation.
+-- Returns the final cache, the best value and the node with the best value.
+-- op defines what we mean by best: (>) means greatest, (<) means smallest.
+-- TODO: make into a monad?
+cachedExtremum :: Cache -> (Int -> Int -> Bool) -> [SearchNode] -> (Cache, Int, SearchNode)
+cachedExtremum cache op (startNode:nodes) =
+    foldl fn (startCache, startVal, startNode) nodes
+    where (startCache, startVal) = evaluateNode cache startNode
+          fn (currCache, currVal, currNode) newNode =
+              let (newCache, newVal) = evaluateNode currCache newNode in 
+              if op newVal currVal then (newCache, newVal, newNode)
+                                   else (newCache, currVal, currNode)
+                                        
+              
+-- Evaluates a search state's score using a minimax search.
+-- TODO: out of memory errors, investigate
+evaluateNode :: Cache -> SearchNode -> (Cache, Int)
+evaluateNode cache sn@(SearchNode p1h p2h _ isP1 isAtt _)
+    | null p1h = (M.insert sn 1 cache, 1)
+    | null p2h = (M.insert sn (-1) cache, -1)
+    | otherwise = (\(c, i, _) -> (M.insert sn i c,i)) $ cachedExtremum cache (if isP1 then (>) else (<)) nextNodes 
         where nextNodes = if isAtt then map (applyAttack sn) $ generateAttacks sn
                                    else map (applyDefense sn) $ generateDefenses sn
 
@@ -192,11 +212,15 @@ evaluateNode sn@(SearchNode p1h p2h _ isP1 isAtt _)
 -- If, otherwise, we can reconstruct the whole game state, we are in the endgame and can use
 -- minimax to determine what to do.
 chooseDefenseAction :: PlayerVisibleState -> [DefenseAction] -> DefenseAction
-chooseDefenseAction gs = case constructSN gs of 
-    Nothing   -> maximumBy (compare `on` evaluateDefenseAction gs)
-    Just node -> maximumBy (compare `on` (evaluateNode . applyDefense node {isAttack = False}))
+chooseDefenseAction gs actions = case constructSN gs of 
+    Nothing   -> maximumBy (compare `on` evaluateDefenseAction gs) actions
+    Just node -> fromJust . lookup bestNode $ zip results actions 
+        where results = map (applyDefense node{isAttack = False}) actions
+              bestNode = (\(_, _, n) -> n) $ cachedExtremum M.empty (>) results
 
 chooseOffenseAction :: PlayerVisibleState -> [OffenseAction] -> OffenseAction
-chooseOffenseAction gs = case constructSN gs of
-    Nothing   -> maximumBy (compare `on` evaluateOffenseAction gs)
-    Just node -> maximumBy (compare `on` (evaluateNode . applyAttack node {isAttack = True}))
+chooseOffenseAction gs actions = case constructSN gs of
+    Nothing   -> maximumBy (compare `on` evaluateOffenseAction gs) actions
+    Just node -> fromJust . lookup bestNode $ zip results actions 
+        where results = map (applyAttack node{isAttack = False}) actions
+              bestNode = (\(_, _, n) -> n) $ cachedExtremum M.empty (>) results
