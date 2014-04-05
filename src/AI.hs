@@ -206,21 +206,29 @@ evaluateNode cache sn@(SearchNode p1h p2h _ isP1 isAtt _)
         where nextNodes = if isAtt then map (applyAttack sn) $ generateAttacks sn
                                    else map (applyDefense sn) $ generateDefenses sn
 
+-- Determine the best defense/attack player 1 can perform from a certain search node.
+minmaxDefense :: SearchNode -> [DefenseAction] -> DefenseAction
+minmaxDefense node actions = 
+    fromJust $ lookup bestNode $ zip results actions 
+    where results = map (applyDefense node{isAttack = False}) actions
+          bestNode = (\(_, _, n) -> n) $ cachedExtremum M.empty (>) results
+
+minmaxAttack :: SearchNode -> [OffenseAction] -> OffenseAction
+minmaxAttack node actions = 
+    fromJust $ lookup bestNode $ zip results actions 
+    where results = map (applyAttack node{isAttack = True}) actions
+          bestNode = (\(_, _, n) -> n) $ cachedExtremum M.empty (>) results
 
 
 -- Choosing an action for now is just about finding one with the maximum value.
 -- If, otherwise, we can reconstruct the whole game state, we are in the endgame and can use
 -- minimax to determine what to do.
 chooseDefenseAction :: PlayerVisibleState -> [DefenseAction] -> DefenseAction
-chooseDefenseAction gs actions = case constructSN gs of 
-    Nothing   -> maximumBy (compare `on` evaluateDefenseAction gs) actions
-    Just node -> fromJust . lookup bestNode $ zip results actions 
-        where results = map (applyDefense node{isAttack = False}) actions
-              bestNode = (\(_, _, n) -> n) $ cachedExtremum M.empty (>) results
+chooseDefenseAction gs = case constructSN gs of 
+    Nothing   -> maximumBy (compare `on` evaluateDefenseAction gs)
+    Just node -> minmaxDefense node
 
 chooseOffenseAction :: PlayerVisibleState -> [OffenseAction] -> OffenseAction
-chooseOffenseAction gs actions = case constructSN gs of
-    Nothing   -> maximumBy (compare `on` evaluateOffenseAction gs) actions
-    Just node -> fromJust . lookup bestNode $ zip results actions 
-        where results = map (applyAttack node{isAttack = False}) actions
-              bestNode = (\(_, _, n) -> n) $ cachedExtremum M.empty (>) results
+chooseOffenseAction gs = case constructSN gs of
+    Nothing   -> maximumBy (compare `on` evaluateOffenseAction gs)
+    Just node -> minmaxAttack node
