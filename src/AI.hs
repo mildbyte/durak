@@ -167,7 +167,7 @@ applyDefense sn@(SearchNode p1h _ _ True _ ts@(TransientState ia ind aa)) (Defen
                        inactiveDefense = ind ++ with}}
     where against = map fst cards
           with    = map snd cards
-applyDefense sn@(SearchNode p2h _ _ False _ ts@(TransientState ia ind aa)) (Defend cards) =
+applyDefense sn@(SearchNode _ p2h _ False _ ts@(TransientState ia ind aa)) (Defend cards) =
     sn {p2Hand = p2h \\ with, isPlayer1 = True, isAttack = True,
         transient = ts {inactiveAttack  = against ++ ia,
                        activeAttack    = aa \\ against,
@@ -198,7 +198,6 @@ cachedExtremum cache op (startNode:nodes) =
               
 -- Evaluates a search state's score using a minimax search.
 -- TODO: out of memory errors, investigate
--- TODO: a trace showed [(SearchNode {p1Hand = [8 Hearts], p2Hand = [8 Hearts]...], shouldn't happen
 evaluateNode :: Cache -> SearchNode -> (Cache, Int)
 evaluateNode cache sn@(SearchNode p1h p2h _ isP1 isAtt _)
     | null p1h = (cache, 1)  --Cheaper to test and return these than looking up in the cache
