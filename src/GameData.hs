@@ -90,6 +90,13 @@ data PlayerVisibleState = PlayerVisibleState
         , transientState    :: TransientState
         } deriving (Show, Eq)
 
+-- Returns a list of cards that we haven't yet seen in the game
+-- = universe of cards
+-- - our hand - discard pile - face-up trump card - cards we know the opponent has - transient state
+unseenCards :: PlayerVisibleState -> [Card]
+unseenCards (PlayerVisibleState p _ d t c _ _ ts) =
+    universe \\ (t : p ++ d ++ c ++ allDeskCards ts)
+
 -- Constructs the state that will be visible by the player, hiding information
 preparePVS :: GameState -> Bool -> PlayerVisibleState
 preparePVS (GameState hand tHand opHand koHand trump deck discard ds) True =

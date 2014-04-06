@@ -15,7 +15,8 @@ executable durak
   hs-source-dirs:  src
   other-modules:   
                    GameEngine,
-                   HumanPlayer
+                   HumanPlayer,
+                   MiniMaxSearch
 
 test-suite Test
   type:            exitcode-stdio-1.0
@@ -26,4 +27,5 @@ test-suite Test
   main-is:         Tests.hs
   other-modules:   
                    GameEngine,
-                   HumanPlayer
+                   HumanPlayer,
+                   MiniMaxSearch
