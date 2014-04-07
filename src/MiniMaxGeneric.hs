@@ -15,7 +15,7 @@ lookupC n (Cache c) = c M.! canonicalForm n
 insertC :: MiniMaxSearchNode m => m -> Int -> Cache m -> Cache m
 insertC n i (Cache c) = Cache $ M.insert (canonicalForm n) i c
 
-newtype Cache m = Cache (M.Map m Int)
+newtype Cache m = Cache (M.Map m Int) deriving Show
 
 -- Folds the cached evaluateNode over several SearchNodes, threading the cache through the computation.
 -- Returns the final cache, the best value and the node with the best value.

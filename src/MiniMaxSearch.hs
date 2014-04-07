@@ -21,8 +21,8 @@ constructSN _ = Nothing
 data SearchNode = SearchNode { p1Hand    :: [Card]
                              , p2Hand    :: [Card]
                              , trump     :: Card
-                             , isPlayer1 :: Bool
-                             , isAttack  :: Bool
+                             , isPlayer1 :: Bool --Whose turn is it now?
+                             , isAttack  :: Bool --Do they need to attack?
                              , transient :: TransientState }
                              deriving (Eq, Ord, Show)
 
@@ -88,7 +88,7 @@ instance MiniMaxSearchNode SearchNode where
     generateNodes sn@(SearchNode _ _ _ _ True _) =
         map (applyAttack sn) $ generateAttacks sn
     generateNodes sn@(SearchNode _ _ _ _ False _) =
-        map (applyAttack sn) $ generateAttacks sn
+        map (applyDefense sn) $ generateDefenses sn
     
     canonicalForm sn@(SearchNode p1h p2h _ _ _ ts@(TransientState ina ind aa)) =
         sn {p1Hand = sort p1h, p2Hand = sort p2h, 
@@ -96,7 +96,10 @@ instance MiniMaxSearchNode SearchNode where
                             inactiveDefense = sort ind,
                             activeAttack    = sort aa}}                                     
     
-    isMaximize = isPlayer1
+    -- If it's P2's turn now, P1 has just performed his turn
+    -- and so we need to maximize the value (since we're 
+    -- evaluating the best state and hence the best action for P1) 
+    isMaximize = not . isPlayer1
 
 -- Determine the best defense/attack player 1 can perform from a certain search node.
 minmaxDefense :: SearchNode -> [DefenseAction] -> DefenseAction
