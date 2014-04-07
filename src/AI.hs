@@ -12,7 +12,9 @@ nothing _ = return()
 aiPlayer :: Player
 aiPlayer = Player daWrapper oaWrapper nothing nothing
 
+oaWrapper :: PlayerVisibleState -> [OffenseAction] -> IO OffenseAction
 oaWrapper gs actions = return $ chooseOffenseAction gs actions
+daWrapper :: PlayerVisibleState -> [DefenseAction] -> IO DefenseAction
 daWrapper gs actions = return $ chooseDefenseAction gs actions
 
 -- Counts the expected value of the fraction of cards

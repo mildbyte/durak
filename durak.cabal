@@ -16,7 +16,8 @@ executable durak
   other-modules:   
                    GameEngine,
                    HumanPlayer,
-                   MiniMaxSearch
+                   MiniMaxSearch,
+                   MiniMaxGeneric
 
 test-suite Test
   type:            exitcode-stdio-1.0
@@ -28,4 +29,5 @@ test-suite Test
   other-modules:   
                    GameEngine,
                    HumanPlayer,
-                   MiniMaxSearch
+                   MiniMaxSearch,
+                   MiniMaxGeneric

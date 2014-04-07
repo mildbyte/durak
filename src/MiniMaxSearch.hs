@@ -2,10 +2,10 @@ module MiniMaxSearch where
 
 import Data.List ((\\), nub, groupBy, sortBy, subsequences, sort)
 import Data.Function (on)
-import qualified Data.Map as M
+import Data.Maybe (fromJust)
 
 import GameData
-import Data.Maybe (fromJust)
+import MiniMaxGeneric 
 
 
 -- Constructs a minimax search node at the endgame when the opponent's hand is known.
@@ -79,56 +79,34 @@ applyDefense sn@(SearchNode p1h _ _ True _ ts) GiveUp =
     sn {p1Hand = p1h ++ allDeskCards ts, isPlayer1 = False, isAttack = True, transient = emptyTransientState} 
 applyDefense sn@(SearchNode _ p2h _ False _ ts) GiveUp =
     sn {p2Hand = p2h ++ allDeskCards ts, isPlayer1 = True, isAttack = True, transient = emptyTransientState}
+
+instance MiniMaxSearchNode SearchNode where
+    getValue (SearchNode [] _ _ _ _ _) = Just 1
+    getValue (SearchNode _ [] _ _ _ _) = Just (-1)
+    getValue _                         = Nothing
     
-type Cache = M.Map SearchNode Int
-
-canonicalForm :: SearchNode -> SearchNode
-canonicalForm sn@(SearchNode p1h p2h _ _ _ ts@(TransientState ina ind aa)) =
-    sn {p1Hand = sort p1h, p2Hand = sort p2h, 
-        transient = ts {inactiveAttack  = sort ina,
-                        inactiveDefense = sort ind,
-                        activeAttack    = sort aa}}                                       
-
-memberC ::  SearchNode -> Cache -> Bool
-memberC = M.member . canonicalForm
-lookupC :: SearchNode -> Cache -> Int
-lookupC = flip (M.!) . canonicalForm
-insertC :: SearchNode -> Int -> Cache -> Cache
-insertC = M.insert . canonicalForm
-
--- Folds the cached evaluateNode over several SearchNodes, threading the cache through the computation.
--- Returns the final cache, the best value and the node with the best value.
--- op defines what we mean by best: (>) means greatest, (<) means smallest.
--- TODO: make into a monad?
-cachedExtremum :: Cache -> (Int -> Int -> Bool) -> [SearchNode] -> (Cache, Int, SearchNode)
-cachedExtremum cache op (startNode:nodes) =
-    foldl fn (startCache, startVal, startNode) nodes
-    where (startCache, startVal) = evaluateNode cache startNode
-          fn (currCache, currVal, currNode) newNode =
-              let (newCache, newVal) = evaluateNode currCache newNode in 
-              if op newVal currVal then (newCache, newVal, newNode)
-                                   else (newCache, currVal, currNode)
-                                        
-              
--- Evaluates a search state's score using a minimax search.
-evaluateNode :: Cache -> SearchNode -> (Cache, Int)
-evaluateNode cache sn@(SearchNode p1h p2h _ isP1 isAtt _)
-    | null p1h = (cache, 1)  --Cheaper to test and return these than looking up in the cache
-    | null p2h = (cache, -1)
-    | memberC sn cache = (cache, lookupC sn cache)
-    | otherwise = (\(c, i, _) -> (insertC sn i c,i)) $ cachedExtremum cache (if isP1 then (>) else (<)) nextNodes 
-        where nextNodes = if isAtt then map (applyAttack sn) $ generateAttacks sn
-                                   else map (applyDefense sn) $ generateDefenses sn
+    generateNodes sn@(SearchNode _ _ _ _ True _) =
+        map (applyAttack sn) $ generateAttacks sn
+    generateNodes sn@(SearchNode _ _ _ _ False _) =
+        map (applyAttack sn) $ generateAttacks sn
+    
+    canonicalForm sn@(SearchNode p1h p2h _ _ _ ts@(TransientState ina ind aa)) =
+        sn {p1Hand = sort p1h, p2Hand = sort p2h, 
+            transient = ts {inactiveAttack  = sort ina,
+                            inactiveDefense = sort ind,
+                            activeAttack    = sort aa}}                                     
+    
+    isMaximize = isPlayer1
 
 -- Determine the best defense/attack player 1 can perform from a certain search node.
 minmaxDefense :: SearchNode -> [DefenseAction] -> DefenseAction
 minmaxDefense node actions = 
     fromJust $ lookup bestNode $ zip results actions 
     where results = map (applyDefense node{isAttack = False}) actions
-          bestNode = (\(_, _, n) -> n) $ cachedExtremum M.empty (>) results
+          bestNode = getBestNode results
 
 minmaxAttack :: SearchNode -> [OffenseAction] -> OffenseAction
 minmaxAttack node actions = 
     fromJust $ lookup bestNode $ zip results actions 
     where results = map (applyAttack node{isAttack = True}) actions
-          bestNode = (\(_, _, n) -> n) $ cachedExtremum M.empty (>) results
+          bestNode = getBestNode results
